@@ -1,0 +1,29 @@
+[
+  {
+    "id": "item-sofa",
+    "name": "沙发",
+    "resale": 800,
+    "discardFee": 0,
+    "haulFee": 300,
+    "image": "assets/items/sofa.svg",
+    "sellHint": "跨城转卖，北京自提"
+  },
+  {
+    "id": "item-table",
+    "name": "桌椅",
+    "resale": 200,
+    "discardFee": 0,
+    "haulFee": 100,
+    "image": "assets/items/table.svg",
+    "sellHint": "桌椅一套，可拆装"
+  },
+  {
+    "id": "item-mattress",
+    "name": "床垫",
+    "resale": 0,
+    "discardFee": 150,
+    "haulFee": 100,
+    "image": "assets/items/mattress.svg",
+    "sellHint": "不建议转卖，仍可出帖，回款记 0"
+  }
+]

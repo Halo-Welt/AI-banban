@@ -1,0 +1,8 @@
+{
+  "name": "move-to-ai",
+  "private": true,
+  "description": "搬伴 · 跨城搬家计划看板",
+  "scripts": {
+    "start": "python3 server.py"
+  }
+}

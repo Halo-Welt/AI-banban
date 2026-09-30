@@ -1,0 +1,34 @@
+[
+  {
+    "id": "buy-decor",
+    "name": "灯饰装饰",
+    "planned": 400,
+    "downgraded": null,
+    "cutOrder": 1,
+    "image": "assets/items/lamp.svg"
+  },
+  {
+    "id": "buy-table",
+    "name": "桌椅",
+    "planned": 600,
+    "downgraded": null,
+    "cutOrder": 2,
+    "image": "assets/items/table.svg"
+  },
+  {
+    "id": "buy-sofa",
+    "name": "新沙发",
+    "planned": 1800,
+    "downgraded": 900,
+    "cutOrder": 3,
+    "image": "assets/items/sofa.svg"
+  },
+  {
+    "id": "buy-bed",
+    "name": "床",
+    "planned": 1500,
+    "downgraded": null,
+    "cutOrder": 4,
+    "image": "assets/items/bed.svg"
+  }
+]

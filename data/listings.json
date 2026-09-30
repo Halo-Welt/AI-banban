@@ -1,0 +1,74 @@
+[
+  {
+    "id": "lz-minsheng",
+    "title": "民生路采光一居",
+    "area": "浦东·陆家嘴西",
+    "monthlyRent": 6800,
+    "availableFrom": "2026-06-15",
+    "commuteMinutes": 22,
+    "petsAllowed": false,
+    "pitch": "步行到 2 号线，窗对小区树",
+    "cover": "assets/listings/lz-minsheng.svg",
+    "demoRole": "default-pick"
+  },
+  {
+    "id": "pd-nanlu-pet",
+    "title": "浦东南路可养猫两居",
+    "area": "浦东·陆家嘴南",
+    "monthlyRent": 7200,
+    "availableFrom": "2026-06-20",
+    "commuteMinutes": 35,
+    "petsAllowed": true,
+    "pitch": "物业书面可养猫，下楼就是商圈",
+    "cover": "assets/listings/pd-nanlu-pet.svg",
+    "demoRole": "pet-reselect"
+  },
+  {
+    "id": "zj-keji",
+    "title": "张江高科精装一居",
+    "area": "浦东·张江",
+    "monthlyRent": 4500,
+    "availableFrom": "2026-06-10",
+    "commuteMinutes": 58,
+    "petsAllowed": false,
+    "pitch": "租金友好，通勤超过 45 分钟",
+    "cover": "assets/listings/zj-keji.svg",
+    "demoRole": "over-45"
+  },
+  {
+    "id": "sj-dadao-late",
+    "title": "世纪大道次新一居",
+    "area": "浦东·世纪大道",
+    "monthlyRent": 6500,
+    "availableFrom": "2026-07-08",
+    "commuteMinutes": 18,
+    "petsAllowed": false,
+    "pitch": "离公司最近，但 7 月 8 日起租",
+    "cover": "assets/listings/sj-dadao-late.svg",
+    "demoRole": "late-start"
+  },
+  {
+    "id": "tq-pet",
+    "title": "塘桥宠物友好一居",
+    "area": "浦东·塘桥",
+    "monthlyRent": 5900,
+    "availableFrom": "2026-06-28",
+    "commuteMinutes": 42,
+    "petsAllowed": true,
+    "pitch": "45 分钟内可到陆家嘴，可养猫",
+    "cover": "assets/listings/tq-pet.svg",
+    "demoRole": "pet-within-45"
+  },
+  {
+    "id": "hm-late-far",
+    "title": "花木线外可养猫一居",
+    "area": "浦东·花木",
+    "monthlyRent": 5200,
+    "availableFrom": "2026-07-05",
+    "commuteMinutes": 50,
+    "petsAllowed": true,
+    "pitch": "可养猫，起租偏晚且通勤过线",
+    "cover": "assets/listings/hm-late-far.svg",
+    "demoRole": "over-45-pet-late"
+  }
+]

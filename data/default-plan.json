@@ -1,0 +1,40 @@
+{
+  "constraints": [
+    {
+      "id": "c-initial",
+      "text": "6月30日北京退租，7月15日上海陆家嘴报到，一次性预算8000，旧沙发桌椅床垫要处理，新家通勤不超过45分钟。",
+      "kind": "initial",
+      "source": "start"
+    }
+  ],
+  "ledger": {
+    "oneOffBudget": 8000,
+    "moveCost": 2000,
+    "occupiedOneOff": 6300,
+    "expectedResale": 0,
+    "monthlyRent": null
+  },
+  "dates": {
+    "moveOut": "2026-06-30",
+    "reportBy": "2026-07-15",
+    "leaseStart": null,
+    "transitionNights": 0
+  },
+  "items": [
+    { "id": "item-sofa", "disposition": "pending" },
+    { "id": "item-table", "disposition": "pending" },
+    { "id": "item-mattress", "disposition": "pending" }
+  ],
+  "listings": {
+    "selectedId": null,
+    "commuteCap": 45
+  },
+  "buy": [
+    { "id": "buy-decor", "status": "planned" },
+    { "id": "buy-table", "status": "planned" },
+    { "id": "buy-sofa", "status": "planned" },
+    { "id": "buy-bed", "status": "planned" }
+  ],
+  "notes": [],
+  "lastChange": null
+}
