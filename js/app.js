@@ -13,6 +13,7 @@ import {
   highlightTerms,
   itemSpec,
   listingSpec,
+  applySeenItems,
   sanitizeGeneratedPlan,
   selectListing,
   setBuyStatus,
@@ -29,6 +30,7 @@ import {
   generatePlan,
   generatePost,
   loadModelConfig,
+  recognizeRoom,
 } from "./ai.js";
 
 const state = {
@@ -55,7 +57,10 @@ const state = {
   showBuy: false,
   editingQuery: false,
   queryDraft: "",
-  roomPhoto: "",
+  roomPhotos: [],
+  roomNote: "",
+  photoKind: "",
+  itemSource: "",
   scanning: false,
   calYear: null,
   calMonth: null,
@@ -66,6 +71,8 @@ let toastTimer = null;
 let flashTimer = null;
 let stepTimer = null;
 let scanTimer = null;
+let scanToken = 0;
+let savedItems = null;
 let thinkTimer = null;
 
 const THINK_STEPS = ["正在读你的原句", "划出日期、预算和待办", "给旧物定价，配新家置办"];
@@ -488,11 +495,29 @@ function queryHtml() {
 }
 
 function roomShotHtml() {
-  if (!state.roomPhoto) return `<p class="empty-hint">还没有房屋照片。</p>`;
+  if (!state.roomPhotos.length) return `<p class="empty-hint">还没有房屋照片。</p>`;
+  const many = state.roomPhotos.length > 1;
+  const label = many ? `正在按这 ${state.roomPhotos.length} 张照片认旧物` : "正在按这张照片认旧物";
   return `
-    <div class="room-shot ${state.scanning ? "is-scanning" : ""}">
-      <img src="${esc(state.roomPhoto)}" alt="旧房照片" />
-      ${state.scanning ? `<i class="scan-line"></i><p class="scan-label">正在按这张照片认旧物</p>` : ""}
+    <div class="room-shot ${many ? "is-multi" : ""} ${state.scanning ? "is-scanning" : ""}">
+      <div class="room-grid">
+        ${state.roomPhotos.map((src) => `<img src="${esc(src)}" alt="旧房照片" />`).join("")}
+      </div>
+      ${state.scanning ? `<i class="scan-line"></i><p class="scan-label">${label}</p>` : ""}
+    </div>
+    ${state.roomNote ? `<p class="room-note">${esc(state.roomNote)}</p>` : ""}
+    <div class="btn-row">
+      <button class="btn btn-secondary" type="button" data-action="pick-photo" ${state.scanning ? "disabled" : ""}>重新上传</button>
+      ${
+        state.roomPhotos.length < 8
+          ? `<button class="btn btn-secondary" type="button" data-action="add-photo" ${state.scanning ? "disabled" : ""}>继续上传</button>`
+          : ""
+      }
+      ${
+        state.photoKind === "upload"
+          ? `<button class="btn btn-text" type="button" data-action="rescan-photo" ${state.scanning ? "disabled" : ""}>按照片重认</button>`
+          : ""
+      }
     </div>
   `;
 }
@@ -533,13 +558,13 @@ function buyEmptyHtml() {
 
 function oldTrackHtml() {
   const { plan } = state;
-  const showItems = Boolean(state.roomPhoto) && !state.scanning;
+  const showItems = Boolean(state.itemSource) && !state.scanning;
   return `
     <section class="track" data-tour="old">
       <h2>旧房清理</h2>
-      ${state.roomPhoto ? roomShotHtml() : oldEmptyHtml()}
+      ${state.roomPhotos.length ? roomShotHtml() : oldEmptyHtml()}
       ${showItems ? plan.items.map((item, index) => itemHtml(item, index)).join("") : ""}
-      <input class="room-file" type="file" accept="image/*" />
+      <input class="room-file" type="file" accept="image/*" multiple />
     </section>
   `;
 }
@@ -657,7 +682,7 @@ function aboutDrawerHtml() {
           <p>旧房没点清，新房没定，预算和报到日却在变。每动一个条件，日期和钱都要一起改。</p>
           <ul class="about-chips">
             <li>${aboutIco(mic)}一句口语</li>
-            <li>${aboutIco(camera)}一张照片</li>
+            <li>${aboutIco(camera)}几张照片</li>
             <li>${aboutIco(pencil)}一次改口</li>
           </ul>
           <p>AI 听懂这些，写回同一盘计划。</p>
@@ -666,7 +691,7 @@ function aboutDrawerHtml() {
           <h3>AI 能做什么</h3>
           <ul class="about-rows">
             ${row(bubble, "读约束", "抽出退租日、报到日、预算和通勤，划线填进计划。")}
-            ${row(camera, "认旧物", "看房间照片，逐件给出转卖、丢弃或带走，并标上费用。")}
+            ${row(camera, "认旧物", "看房间照片，只列出画面里的旧物。不是旧房就不会硬认。可以一次传多张。")}
             ${row(note, "写转卖帖", "生成小红书标题、正文和标签，复制就能发。")}
             ${row(house, "按通勤筛房", "过滤小红书房源。选定一套，新房才落定。")}
             ${row(bag, "补上置办", "不带走的旧物转成新家清单，守住一次性预算。")}
@@ -842,12 +867,14 @@ const TOUR_STEPS = [
     title: "旧房先留白",
     body: (s) =>
       s.scanning
-        ? "正在按这张照片认旧物，认出后会列出沙发、桌椅和床垫。"
-        : "点「用示例房间」，或上传一张房屋照片。每件旧物可以转卖、丢弃或带走。",
+        ? s.photoKind === "upload"
+          ? "正在按这些照片认旧物。不是旧房的话，不会硬列出家具。"
+          : "正在按这张照片认旧物，认出后会列出沙发、桌椅和床垫。"
+        : "点「用示例房间」，或一次上传多张房屋照片。每件旧物可以转卖、丢弃或带走。",
     hint: (s) => (s.scanning ? "请稍等" : "请点击「用示例房间」"),
     wait: "items-ready",
     pass: (s) => !s.scanning,
-    anchor: (s) => (s.scanning || s.roomPhoto ? "[data-tour='old']" : "[data-tour='sample']"),
+    anchor: (s) => (s.scanning || s.roomPhotos.length ? "[data-tour='old']" : "[data-tour='sample']"),
   },
   {
     id: "sell",
@@ -1256,7 +1283,8 @@ function stopThinkCycle() {
 
 function capturePlanChoices(plan) {
   return {
-    photo: state.roomPhoto,
+    photos: state.roomPhotos,
+    photoKind: state.photoKind,
     picking: state.pickingHome,
     showBuy: state.showBuy,
     selected: plan.listings.selectedId,
@@ -1286,7 +1314,11 @@ function restorePlanChoices(plan, kept) {
   const stillOk = Boolean(kept.selected && filterListings(plan, state.catalog).some((row) => row.id === kept.selected));
   plan.listings.selectedId = stillOk ? kept.selected : null;
   syncPlan(plan, state.catalog);
-  state.roomPhoto = kept.photo;
+  savedItems = null;
+  state.roomPhotos = Array.isArray(kept.photos) ? kept.photos : [];
+  state.photoKind = kept.photoKind || "";
+  state.itemSource = kept.photoKind === "sample" ? "plan" : "";
+  state.roomNote = kept.photoKind === "upload" ? "要求更新了。点「按照片重认」再看这些照片。" : "";
   state.pickingHome = stillOk ? false : kept.selected ? true : kept.picking;
   state.showBuy = stillOk ? kept.showBuy : false;
   if (!stillOk && kept.drawer?.type === "listing") state.drawer = null;
@@ -1397,33 +1429,162 @@ function enterBoard() {
   }, 720 + markCount * 220);
 }
 
+function rememberPlanItems() {
+  if (savedItems || !state.plan) return;
+  savedItems = {
+    planItems: clone(state.plan.items),
+    catalogItems: clone(state.catalog.items),
+  };
+}
+
+function restorePlanItems() {
+  if (!savedItems || !state.plan) return;
+  state.plan.items = clone(savedItems.planItems);
+  state.catalog.items = clone(savedItems.catalogItems);
+  syncPlan(state.plan, state.catalog);
+}
+
+function finishScanReveal() {
+  state.scanning = false;
+  state.animate = true;
+  state.enterKind = "items";
+  noteTour("items-ready");
+  render();
+  const itemCount = document.querySelectorAll(".item-card").length;
+  stepTimer = setTimeout(() => {
+    state.animate = false;
+  }, 780 + itemCount * 160);
+}
+
 function beginScan(src) {
   clearTimeout(stepTimer);
   clearTimeout(scanTimer);
-  state.roomPhoto = src;
+  scanToken += 1;
+  restorePlanItems();
+  state.roomPhotos = [src];
+  state.photoKind = "sample";
+  state.roomNote = "";
+  state.itemSource = "";
   state.scanning = true;
   state.animate = true;
   state.enterKind = "photo";
   render();
   scanTimer = setTimeout(() => {
-    if (state.view !== "board" || !state.scanning) return;
-    state.scanning = false;
-    state.animate = true;
-    state.enterKind = "items";
-    noteTour("items-ready");
-    render();
-    const itemCount = document.querySelectorAll(".item-card").length;
-    stepTimer = setTimeout(() => {
-      state.animate = false;
-    }, 780 + itemCount * 160);
+    if (state.view !== "board" || !state.scanning || state.photoKind !== "sample") return;
+    state.itemSource = "plan";
+    finishScanReveal();
   }, 1300);
+}
+
+async function compressImage(file) {
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    bitmap = await createImageBitmap(file);
+  }
+  try {
+    const maxEdge = 1280;
+    const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", 0.82);
+  } finally {
+    bitmap.close?.();
+  }
+}
+
+async function beginUpload(files, { append = false, rescan = false } = {}) {
+  if (!state.plan) return;
+  const token = ++scanToken;
+  clearTimeout(scanTimer);
+  let images = state.roomPhotos.slice();
+  if (!rescan) {
+    const picked = [...files].filter((file) => file.type.startsWith("image/"));
+    if (!picked.length) {
+      showToast("请选择图片");
+      return;
+    }
+    state.scanning = true;
+    state.roomNote = "";
+    state.itemSource = "";
+    render();
+    const encoded = [];
+    for (const file of picked) {
+      if (token !== scanToken) return;
+      try {
+        encoded.push(await compressImage(file));
+      } catch {
+        // 浏览器打不开的格式直接跳过
+      }
+    }
+    if (token !== scanToken) return;
+    if (!encoded.length) {
+      state.scanning = false;
+      render();
+      showToast("这些图片打不开，请换 JPG 或 PNG");
+      return;
+    }
+    const merged = append ? state.roomPhotos.concat(encoded) : encoded;
+    if (merged.length > 8) showToast("最多 8 张，多出来的没有收下");
+    images = merged.slice(0, 8);
+  }
+  if (!images.length || token !== scanToken) return;
+  state.roomPhotos = images;
+  state.photoKind = "upload";
+  state.roomNote = "";
+  state.itemSource = "";
+  state.scanning = true;
+  state.animate = true;
+  state.enterKind = "photo";
+  render();
+  if (!canCallModel(state.model)) {
+    state.scanning = false;
+    state.roomNote = "现在还不能把照片交给模型。";
+    render();
+    return;
+  }
+  try {
+    const result = await recognizeRoom({ config: state.model, images });
+    if (token !== scanToken) return;
+    const named = (result.items || []).filter((item) => String(item?.name || "").trim());
+    if (result.room && named.length) {
+      rememberPlanItems();
+      if (applySeenItems(state.plan, state.catalog, named)) {
+        state.itemSource = "photo";
+        state.roomNote = "";
+      } else {
+        restorePlanItems();
+        state.itemSource = "";
+        state.roomNote = "看到了房间，但没能列成可处理的旧物。";
+      }
+    } else {
+      restorePlanItems();
+      state.itemSource = "";
+      state.roomNote = result.reason || "这些照片里没有可搬走的旧物。";
+    }
+  } catch {
+    if (token !== scanToken) return;
+    restorePlanItems();
+    state.itemSource = "";
+    state.roomNote = "照片没看清，请再试一次。";
+  }
+  finishScanReveal();
 }
 
 function settleGeneratedPlan(plan, usedModel) {
   state.plan = plan;
   state.fallbackBanner = state.mode === "live" && !usedModel;
   state.drawer = null;
-  state.roomPhoto = "";
+  savedItems = null;
+  state.roomPhotos = [];
+  state.roomNote = "";
+  state.photoKind = "";
+  state.itemSource = "";
   state.busy = null;
   stopThinkCycle();
   enterBoard();
@@ -1605,7 +1766,11 @@ function resetDemo() {
   state.housingFlash = false;
   state.busy = null;
   state.prompt = "";
-  state.roomPhoto = "";
+  savedItems = null;
+  state.roomPhotos = [];
+  state.roomNote = "";
+  state.photoKind = "";
+  state.itemSource = "";
   state.scanning = false;
   state.animate = false;
   state.enterKind = "";
@@ -1642,7 +1807,14 @@ function onClick(event) {
   if (action === "save-query") onSaveQuery();
   if (action === "cal-prev") shiftCalMonth(-1);
   if (action === "cal-next") shiftCalMonth(1);
-  if (action === "pick-photo") document.querySelector(".room-file")?.click();
+  if (action === "pick-photo" || action === "add-photo") {
+    const input = document.querySelector(".room-file");
+    if (input && !state.scanning) {
+      input.dataset.mode = action === "add-photo" ? "append" : "replace";
+      input.click();
+    }
+  }
+  if (action === "rescan-photo" && !state.scanning) beginUpload(null, { rescan: true });
   if (action === "use-sample") beginScan("./assets/room.svg");
   if (action === "pick-home") {
     state.pickingHome = true;
@@ -1727,11 +1899,12 @@ function onInput(event) {
 }
 
 function onFile(event) {
-  const file = event.target.files?.[0];
-  if (!file || !file.type.startsWith("image/")) return;
-  const reader = new FileReader();
-  reader.onload = () => beginScan(String(reader.result || ""));
-  reader.readAsDataURL(file);
+  const input = event.target;
+  if (!input.classList?.contains("room-file")) return;
+  const files = [...(input.files || [])];
+  const append = input.dataset.mode === "append";
+  input.value = "";
+  beginUpload(files, { append });
 }
 
 function onSubmit(event) {

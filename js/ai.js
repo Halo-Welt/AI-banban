@@ -142,6 +142,47 @@ export async function generatePlan({ config, sentence, defaultPlan, catalog }) {
   return sanitizeGeneratedPlan(raw, sentence, defaultPlan, catalog, { live: true });
 }
 
+const ROOM_SYSTEM = `你在看用户上传的照片，判断里面有没有可搬走的家具家电。只输出一个 JSON 对象，不要 Markdown。
+
+{
+  "room": false,
+  "reason": "这是一张风景，不是房间。",
+  "items": []
+}
+
+room 为 true 的唯一条件：至少一张照片是室内居住空间，并且画面里真的有可搬走的家具或家电。
+人像、宠物、食物、风景、证件、截图、纯色、商品白底图、建筑外观，都是 room=false，items 必须是 []。
+看不清或无法判断，也是 room=false。
+不要因为这是搬家应用就猜沙发、桌椅、床垫。画面里没有的东西不要写。
+多张照片里同一件东西只记一次。
+room 为 true 时 items 给 1 到 6 件，每件都必须看得见。
+name 不超过 8 个字。note 不超过 16 个字，写看见的特征。
+resale、discardFee、haulFee 是整数元。能转卖的 discardFee 为 0。不建议转卖的 resale 为 0，discardFee 在 100 到 200。haulFee 是搬走加价，0 到 400。
+sellHint 不超过 18 个字。
+reason：room 为 false 时用一句不超过 24 字说明为什么不是旧房；room 为 true 时留空字符串。`;
+
+export async function recognizeRoom({ config, images }) {
+  const text = await chat({
+    config: { ...config, model: "deepseek-flash" },
+    json: true,
+    temperature: 0.1,
+    timeoutMs: 60000,
+    system: ROOM_SYSTEM,
+    user: [
+      { type: "text", text: `下面有 ${images.length} 张照片。只认画面里看得见的旧物。` },
+      ...images.map((url) => ({
+        type: "image_url",
+        image_url: { url, detail: "auto" },
+      })),
+    ],
+  });
+  const raw = extractJson(text);
+  const room = raw.room === true;
+  const reason = String(raw.reason || "").trim().slice(0, 48);
+  const items = room && Array.isArray(raw.items) ? raw.items : [];
+  return { room, reason, items };
+}
+
 export async function generatePost({ config, item }) {
   const text = await chat({
     config,

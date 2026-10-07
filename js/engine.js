@@ -328,6 +328,39 @@ function normalizeGeneratedItems(list) {
   return { specs, rows };
 }
 
+export function applySeenItems(plan, catalog, list) {
+  if (!Array.isArray(list)) return false;
+  const specs = [];
+  const rows = [];
+  const seen = new Set();
+  for (const row of list) {
+    if (specs.length >= 6) break;
+    const name = cleanName(row?.name);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    const id = `item-seen-${specs.length + 1}`;
+    specs.push({
+      id,
+      name,
+      resale: money(row?.resale, 0, 20000) ?? 0,
+      discardFee: money(row?.discardFee, 0, 1500) ?? 0,
+      haulFee: money(row?.haulFee, 0, 1500) ?? 0,
+      image: imageForItem(name, specs.length),
+      sellHint: String(row?.sellHint || "自提，不邮寄").trim().slice(0, 36),
+    });
+    rows.push({
+      id,
+      disposition: "pending",
+      note: String(row?.note || "").trim().slice(0, 24),
+    });
+  }
+  if (!rows.length) return false;
+  catalog.items = catalog.items.filter((item) => !String(item.id).startsWith("item-seen-")).concat(specs);
+  plan.items = rows;
+  syncPlan(plan, catalog);
+  return true;
+}
+
 function normalizeGeneratedBuy(list) {
   if (!Array.isArray(list)) return null;
   const specs = [];
