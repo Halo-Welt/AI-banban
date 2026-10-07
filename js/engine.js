@@ -339,13 +339,14 @@ export function applySeenItems(plan, catalog, list) {
     if (!name || seen.has(name)) continue;
     seen.add(name);
     const id = `item-seen-${specs.length + 1}`;
+    const shot = String(row?.image || "");
     specs.push({
       id,
       name,
       resale: money(row?.resale, 0, 20000) ?? 0,
       discardFee: money(row?.discardFee, 0, 1500) ?? 0,
       haulFee: money(row?.haulFee, 0, 1500) ?? 0,
-      image: imageForItem(name, specs.length),
+      image: shot.startsWith("data:image/") ? shot : "",
       sellHint: String(row?.sellHint || "自提，不邮寄").trim().slice(0, 36),
     });
     rows.push({

@@ -22,7 +22,7 @@ import {
   statusLabel,
   syncPlan,
   templateExplanation,
-} from "./engine.js?v=37";
+} from "./engine.js?v=38";
 import {
   canCallModel,
   classifyWithModel,
@@ -31,7 +31,7 @@ import {
   generatePost,
   loadModelConfig,
   recognizeRoom,
-} from "./ai.js?v=37";
+} from "./ai.js?v=38";
 
 const state = {
   view: "start",
@@ -1476,6 +1476,96 @@ function beginScan(src) {
   }, 1300);
 }
 
+function clampUnit(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function parseBox(value) {
+  let nums = null;
+  if (Array.isArray(value)) nums = value.slice(0, 4).map(Number);
+  else if (value && typeof value === "object") {
+    nums = [value.x ?? value.left, value.y ?? value.top, value.w ?? value.width, value.h ?? value.height].map(Number);
+  }
+  if (!nums || nums.length < 4 || nums.some((n) => !Number.isFinite(n))) return null;
+  let [x, y, w, h] = nums;
+  const max = Math.max(Math.abs(x), Math.abs(y), Math.abs(w), Math.abs(h));
+  if (max > 1.5 && max <= 100) {
+    x /= 100;
+    y /= 100;
+    w /= 100;
+    h /= 100;
+  } else if (max > 100) {
+    x /= 1000;
+    y /= 1000;
+    w /= 1000;
+    h /= 1000;
+  }
+  if (w > x && h > y && (x + w > 1.08 || y + h > 1.08)) {
+    w -= x;
+    h -= y;
+  }
+  if (w <= 0.02 || h <= 0.02) return null;
+  x = clampUnit(x, 0, 0.96);
+  y = clampUnit(y, 0, 0.96);
+  w = clampUnit(w, 0.04, 1 - x);
+  h = clampUnit(h, 0.04, 1 - y);
+  return [x, y, w, h];
+}
+
+function photoIndex(value, count) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || count < 1) return 0;
+  if (n >= 0 && n < count) return n;
+  if (n >= 1 && n <= count) return n - 1;
+  return 0;
+}
+
+function cropPhoto(src, box) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const region = box || [0, 0, 1, 1];
+      const padX = Math.min(0.02, region[2] * 0.06);
+      const padY = Math.min(0.02, region[3] * 0.06);
+      const x = clampUnit(region[0] - padX, 0, 0.98);
+      const y = clampUnit(region[1] - padY, 0, 0.98);
+      const w = clampUnit(region[2] + padX * 2, 0.04, 1 - x);
+      const h = clampUnit(region[3] + padY * 2, 0.04, 1 - y);
+      const sx = Math.round(x * image.width);
+      const sy = Math.round(y * image.height);
+      const sw = Math.max(1, Math.round(w * image.width));
+      const sh = Math.max(1, Math.round(h * image.height));
+      const size = 288;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      const scale = Math.max(size / sw, size / sh);
+      const dw = sw * scale;
+      const dh = sh * scale;
+      ctx.drawImage(image, sx, sy, sw, sh, (size - dw) / 2, (size - dh) / 2, dw, dh);
+      resolve(canvas.toDataURL("image/jpeg", 0.86));
+    };
+    image.onerror = () => reject(new Error("crop"));
+    image.src = src;
+  });
+}
+
+async function attachCrops(items, images) {
+  const crops = [];
+  for (const item of items) {
+    const src = images[photoIndex(item.photo, images.length)] || images[0];
+    let image = src;
+    try {
+      image = await cropPhoto(src, parseBox(item.box));
+    } catch {
+      image = src;
+    }
+    crops.push({ ...item, image });
+  }
+  return crops;
+}
+
 async function compressImage(file) {
   let bitmap;
   try {
@@ -1554,7 +1644,9 @@ async function beginUpload(files, { append = false, rescan = false } = {}) {
     const named = (result.items || []).filter((item) => String(item?.name || "").trim());
     if (result.room && named.length) {
       rememberPlanItems();
-      if (applySeenItems(state.plan, state.catalog, named)) {
+      const cropped = await attachCrops(named, images);
+      if (token !== scanToken) return;
+      if (applySeenItems(state.plan, state.catalog, cropped)) {
         state.itemSource = "photo";
         state.roomNote = "";
       } else {

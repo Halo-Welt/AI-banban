@@ -145,9 +145,11 @@ export async function generatePlan({ config, sentence, defaultPlan, catalog }) {
 const ROOM_SYSTEM = `你在看用户上传的照片，判断里面有没有可搬走的家具家电。只输出一个 JSON 对象，不要 Markdown。
 
 {
-  "room": false,
-  "reason": "这是一张风景，不是房间。",
-  "items": []
+  "room": true,
+  "reason": "",
+  "items": [
+    {"name":"洗衣机","note":"白色滚筒","resale":500,"discardFee":0,"haulFee":280,"sellHint":"自提不邮寄","photo":0,"box":[0.58,0.22,0.30,0.62]}
+  ]
 }
 
 room 为 true 的唯一条件：至少一张照片是室内居住空间，并且画面里真的有可搬走的家具或家电。
@@ -156,6 +158,8 @@ room 为 true 的唯一条件：至少一张照片是室内居住空间，并且
 不要因为这是搬家应用就猜沙发、桌椅、床垫。画面里没有的东西不要写。
 多张照片里同一件东西只记一次。
 room 为 true 时 items 给 1 到 6 件，每件都必须看得见。
+每件必须带 photo 和 box。photo 是这件东西所在的照片序号，第一张是 0。
+box 是该照片里包住整件物品的范围，依次为左、上、宽、高，都是 0 到 1 的小数。第三个数是宽度，不是右边界；第四个数是高度，不是下边界。框要贴着这件物品，不要框整张照片，也不要只框一个角。
 name 不超过 8 个字。note 不超过 16 个字，写看见的特征。
 resale、discardFee、haulFee 是整数元。能转卖的 discardFee 为 0。不建议转卖的 resale 为 0，discardFee 在 100 到 200。haulFee 是搬走加价，0 到 400。
 sellHint 不超过 18 个字。
