@@ -22,7 +22,7 @@ import {
   statusLabel,
   syncPlan,
   templateExplanation,
-} from "./engine.js";
+} from "./engine.js?v=37";
 import {
   canCallModel,
   classifyWithModel,
@@ -31,7 +31,7 @@ import {
   generatePost,
   loadModelConfig,
   recognizeRoom,
-} from "./ai.js";
+} from "./ai.js?v=37";
 
 const state = {
   view: "start",
