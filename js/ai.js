@@ -3,6 +3,7 @@ import { sanitizeGeneratedPlan } from "./engine.js";
 export const DEFAULT_MODEL = {
   baseUrl: "https://api.deepseek.com/v1",
   model: "deepseek-chat",
+  // 仓库里留空。发布时由 Actions 从 Secret DEEPSEEK_API_KEY 写入。
   apiKey: "",
 };
 
@@ -38,16 +39,22 @@ async function chat({ config, system, user, timeoutMs = 45000, json = false, tem
     Authorization: `Bearer ${config.apiKey}`,
   };
   const body = JSON.stringify(payload);
+  const directUrl = `${config.baseUrl.replace(/\/$/, "")}/chat/completions`;
   try {
-    let response = await fetch("/api/chat", {
-      method: "POST",
-      headers,
-      body,
-      signal: controller.signal,
-    });
-    if (response.status === 404 || response.status === 501) {
-      const url = `${config.baseUrl.replace(/\/$/, "")}/chat/completions`;
-      response = await fetch(url, {
+    let response;
+    try {
+      response = await fetch("/api/chat", {
+        method: "POST",
+        headers,
+        body,
+        signal: controller.signal,
+      });
+    } catch {
+      response = null;
+    }
+    const proxied = response && response.ok && (response.headers.get("content-type") || "").includes("json");
+    if (!proxied) {
+      response = await fetch(directUrl, {
         method: "POST",
         headers,
         body,
