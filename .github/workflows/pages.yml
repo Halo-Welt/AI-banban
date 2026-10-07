@@ -26,18 +26,7 @@ jobs:
       - name: Inject model key
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-        run: python3 - << 'PY'
-import json, os, pathlib, sys
-key = os.environ.get("DEEPSEEK_API_KEY", "")
-if not key:
-    sys.exit("DEEPSEEK_API_KEY secret is empty")
-path = pathlib.Path("js/ai.js")
-text = path.read_text()
-needle = 'apiKey: ""'
-if needle not in text:
-    sys.exit("apiKey placeholder missing in js/ai.js")
-path.write_text(text.replace(needle, "apiKey: " + json.dumps(key), 1))
-PY
+        run: python3 scripts/inject-key.py
 
       - name: Assemble site
         run: |
