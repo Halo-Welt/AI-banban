@@ -243,6 +243,177 @@ img {
   margin-top: 16px;
 }
 
+.iui {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--canvas);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.iui-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.iui-q {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.iui-label {
+  color: var(--body);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.iui-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.iui-options button {
+  border: 0;
+  background: var(--surface);
+  color: var(--title);
+  padding: 8px 12px;
+  border-radius: 9999px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.iui-options button:hover {
+  background: var(--fill-2);
+}
+
+.iui-options button.is-on {
+  background: var(--red-btn);
+  color: #fff;
+}
+
+.iui-custom {
+  width: 112px;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--surface);
+  padding: 8px 12px;
+  color: var(--title);
+  font-size: 14px;
+  line-height: 22px;
+  outline: none;
+}
+
+.iui-custom:focus {
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.iui-wait {
+  margin: 16px 0 0;
+  color: var(--body);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.iui-field {
+  width: 100%;
+}
+
+.iui-cal {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 8px 8px 4px;
+}
+
+.iui-cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.iui-cal-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.iui-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.iui-cal-dow,
+.iui-cal-pad {
+  height: 28px;
+}
+
+.iui-cal-dow {
+  text-align: center;
+  font-size: 12px;
+  line-height: 28px;
+  color: var(--caption);
+}
+
+.iui-cal-day {
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--title);
+  font-size: 14px;
+  line-height: 36px;
+  padding: 0;
+}
+
+.iui-cal-day:hover {
+  background: var(--fill-1);
+}
+
+.iui-cal-day.is-on {
+  background: var(--red-btn);
+  color: #fff;
+}
+
+.iui-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.iui-slider-value {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+  font-variant-numeric: tabular-nums;
+}
+
+.iui-slider input[type="range"] {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--red-btn);
+}
+
+.iui-slider-scale {
+  display: flex;
+  justify-content: space-between;
+  color: var(--caption);
+  font-size: 12px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.page-start .wrap:has(.iui) {
+  align-items: safe center;
+}
+
 .think-list {
   list-style: none;
   margin: 16px 0 0;

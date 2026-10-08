@@ -1,9 +1,9 @@
-import { sanitizeGeneratedPlan } from "./engine.js";
+import { normalizeWidgets, sanitizeGeneratedPlan } from "./engine.js";
 
 export const DEFAULT_MODEL = {
   baseUrl: "https://api.deepseek.com/v1",
   model: "deepseek-chat",
-  // 仓库里留空。发布时由 Actions 从 Secret DEEPSEEK_API_KEY 写入。
+  // 源码留空。本地由 server.py 从环境变量读取。GitHub Pages 构建时写入这个字段。
   apiKey: "",
 };
 
@@ -12,7 +12,7 @@ export function loadModelConfig() {
 }
 
 export function canCallModel(config) {
-  return Boolean(config?.apiKey && config?.baseUrl && config?.model);
+  return Boolean(config?.model);
 }
 
 function extractJson(text) {
@@ -22,7 +22,7 @@ function extractJson(text) {
 }
 
 async function chat({ config, system, user, timeoutMs = 45000, json = false, temperature = 0.4 }) {
-  if (!canCallModel(config)) throw new Error("no-key");
+  if (!canCallModel(config)) throw new Error("no-model");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const payload = {
@@ -34,29 +34,23 @@ async function chat({ config, system, user, timeoutMs = 45000, json = false, tem
     ],
   };
   if (json) payload.response_format = { type: "json_object" };
-  const headers = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${config.apiKey}`,
-  };
   const body = JSON.stringify(payload);
-  const directUrl = `${config.baseUrl.replace(/\/$/, "")}/chat/completions`;
   try {
-    let response;
-    try {
-      response = await fetch("/api/chat", {
-        method: "POST",
-        headers,
-        body,
-        signal: controller.signal,
-      });
-    } catch {
-      response = null;
-    }
+    let response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      signal: controller.signal,
+    }).catch(() => null);
     const proxied = response && response.ok && (response.headers.get("content-type") || "").includes("json");
     if (!proxied) {
-      response = await fetch(directUrl, {
+      if (!config.apiKey) throw new Error("no-key");
+      response = await fetch(`${config.baseUrl.replace(/\/$/, "")}/chat/completions`, {
         method: "POST",
-        headers,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey}`,
+        },
         body,
         signal: controller.signal,
       });
@@ -105,6 +99,7 @@ const PLAN_SYSTEM = `你根据用户自己写的搬家原句，填写这一份�
 - 日期年份固定 2026，格式 YYYY-MM-DD。相对时间按 2026-10-01 理解：下个月=11月，月底=当月最后一天，月初=1日，月中=15日。
 - 中文数量换成整数：八千=8000，六千五=6500，一万二=12000，1.2万=12000，一个小时=60，半小时=30，四十五分钟=45。
 - 原句没写时：退租 2026-10-31，报到 2026-11-15，oneOffBudget 8000，moveCost 2000，commuteCap 45。不要用 6月30日/7月15日 那组 Demo 日期，除非原句写了。
+- 原句里如果写了高铁、飞机、自驾，或行李随身、走快递、跟搬家公司，brief 里要留住这件事实，marks 能划到的划上。不要改成另一种走法。
 - 原句提到猫、狗、宠物、养猫时 pet 为 true，否则 false。
 - 价格、oneOffBudget、commuteCap 必须是数字。`;
 
@@ -128,6 +123,48 @@ kind 只能是 pet、budget、deadline、note 四者之一。
 把一次性预算改成某个金额，kind 为 budget。
 报到日提前或改到某一天，kind 为 deadline。
 其余记事，kind 为 note。`;
+
+const WIDGET_SYSTEM = `你对照下面这份清单，检查用户的搬家原句还缺哪几项，只为缺的项产出界面。只输出一个 JSON 对象，不要 Markdown。原句已经写明的项不要再问。一项都不缺时 widgets 为 []。
+
+用户需要提供的信息，按这个顺序检查：
+1. 出发地：从哪一座城市搬出。缺了用 field。
+2. 目的地：搬到哪一座城市。缺了用 field。出发地和目的地可以合成一个 field，不要问两次。
+3. 日期：要落到具体一天。完全没写，用 calendar 让用户点选。写了一个日子但没说是离开、到达还是退租，用 choice，不要再出一张月历。
+4. 人怎么走：只在跨城、且原句没写高铁、火车、飞机、自驾、开车时问。用 choice，选项只有高铁、飞机、自驾。同城或换区不要问。
+5. 行李怎么走：只在跨城、且原句没写行李、快递、托运、随身时问。用 choice，选项只有随身带走、快递寄送、搬家公司。
+6. 一次性预算：原句没有金额时必须问。用 slider，不要用按钮。
+7. 报到日和通勤：只有原句提到上班、报到、入职、实习、公司才问。没提就跳过。报到日没写用 calendar，通勤分钟没写用 slider。
+
+控件只有四种：
+- calendar：点选某一天。year 用 2026。month 用原句里的月份；只说了下个月就用 11。text 用 {m} 和 {d}。
+- slider：拖动选金额或分钟。text 用 {value}。跨城预算 min 2000、max 40000、step 500。通勤 min 15、max 90、step 5、unit 为分钟。
+- choice：在几个解释里点一个。选项必须用原句里的城市和日期。人怎么走的 text 写成「人坐高铁去长沙」。行李的 text 写成「行李随身」「行李走快递」「行李跟搬家公司」。
+- field：填一个原句里没有的城市或短词。text 用 {value}。
+
+最多 4 个控件。超过 4 项缺失时，按清单 3、1、2、4、5、6、7 的顺序取前 4 项。prompt 不超过 18 个字。不要出现陆家嘴、沙发、床垫，除非原句写了。text 是补在原句末尾的一句事实。
+
+{
+  "widgets": [
+    {"type": "choice", "id": "date-role", "prompt": "11月1日是哪一天", "options": [{"label": "离开深圳", "text": "11月1日离开深圳"}, {"label": "到达长沙", "text": "11月1日到达长沙"}]},
+    {"type": "choice", "id": "travel", "prompt": "人怎么去长沙", "options": [{"label": "高铁", "text": "人坐高铁去长沙"}, {"label": "飞机", "text": "人坐飞机去长沙"}, {"label": "自驾", "text": "人自己开车"}]},
+    {"type": "choice", "id": "luggage", "prompt": "行李怎么走", "options": [{"label": "随身带走", "text": "行李随身"}, {"label": "快递寄送", "text": "行李走快递"}, {"label": "搬家公司", "text": "行李跟搬家公司"}]},
+    {"type": "slider", "id": "budget", "prompt": "一次性预算", "min": 2000, "max": 40000, "step": 500, "value": 15000, "unit": "元", "text": "一次性预算{value}"}
+  ]
+}`;
+
+export async function proposeWidgets({ config, sentence }) {
+  const text = await chat({
+    config,
+    json: true,
+    temperature: 0.3,
+    timeoutMs: 25000,
+    system: WIDGET_SYSTEM,
+    user: `今天按 2026-10-08。用户原句：${sentence}`,
+  });
+  const raw = extractJson(text);
+  if (!raw || !Array.isArray(raw.widgets)) throw new Error("bad-widgets");
+  return normalizeWidgets(raw.widgets);
+}
 
 export async function generatePlan({ config, sentence, defaultPlan, catalog }) {
   const text = await chat({

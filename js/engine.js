@@ -214,6 +214,287 @@ function commuteFromSentence(sentence) {
   return null;
 }
 
+const BOUNDARY_WHEN = "\\d{1,2}月\\d{1,2}[日号]?|下个?月月底|月底|月初|月中|下个?月|这个?月|本月|\\d{4}-\\d{2}-\\d{2}";
+
+function eventDated(sentence, keyword) {
+  const when = new RegExp(BOUNDARY_WHEN);
+  return String(sentence || "")
+    .split(/[，,。；;！!？?\n]/)
+    .some((clause) => keyword.test(clause) && when.test(clause.replace(/\s+/g, "")));
+}
+
+function mentionedDates(sentence) {
+  const found = [];
+  const re = /(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?/g;
+  let match = re.exec(sentence);
+  while (match) {
+    found.push(`${Number(match[1])}月${Number(match[2])}日`);
+    match = re.exec(sentence);
+  }
+  return [...new Set(found)];
+}
+
+function cutPlace(name) {
+  return String(name || "")
+    .replace(/(坐|乘|搭|实习|报到|入职|上班|开学|搬家|出发|退租|入住|搬出).*$/, "")
+    .replace(/(市|城区)$/, "")
+    .slice(0, 8);
+}
+
+function mentionedPlaces(sentence) {
+  const text = sentence.replace(/\s+/g, "");
+  let from = "";
+  let to = "";
+  const fromMatch = text.match(/从([\u4e00-\u9fa5]{2,8}?)(?:搬家|搬去|搬到|出发|去|到)/);
+  if (fromMatch) from = cutPlace(fromMatch[1]);
+  const toMatch = text.match(/搬家去([\u4e00-\u9fa5]{2,8})/) || text.match(/(?:搬去|搬到|去到|到达|抵达)([\u4e00-\u9fa5]{2,8})/);
+  if (toMatch) to = cutPlace(toMatch[1]);
+  if (!from) {
+    const leaveCity = text.match(/([\u4e00-\u9fa5]{2,8})(?:退租|出发|搬出|离开)/);
+    if (leaveCity) from = cutPlace(leaveCity[1]);
+  }
+  if (!to) {
+    const arriveCity =
+      text.match(/(?:去|到)([\u4e00-\u9fa5]{2,8}?)(?:报到|入职|上班|开学|实习|入住)/) ||
+      text.match(/([\u4e00-\u9fa5]{2,8})(?:报到|入职|实习)/) ||
+      text.match(/去([\u4e00-\u9fa5]{2,6})(?=[，,。]|$)/);
+    if (arriveCity) to = cutPlace(arriveCity[1]);
+  }
+  if (from && to && from === to) to = "";
+  return { from, to };
+}
+
+function hintedMonth(sentence) {
+  const match = String(sentence || "").match(/(\d{1,2})\s*月/);
+  if (match) {
+    const month = Number(match[1]);
+    if (month >= 1 && month <= 12) return { year: 2026, month };
+  }
+  if (/下个?月/.test(sentence)) return { year: 2026, month: 11 };
+  return { year: 2026, month: 10 };
+}
+
+function sliderWidget(id, prompt, min, max, step, value, unit, text) {
+  return { type: "slider", id, prompt, min, max, step, value, unit, text };
+}
+
+function fillTemplate(template, pairs) {
+  return Object.entries(pairs).reduce((text, [key, value]) => text.split(`{${key}}`).join(String(value)), template);
+}
+
+export function normalizeWidgets(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  const widgets = [];
+  const seen = new Set();
+  for (const item of list) {
+    if (widgets.length >= 4) break;
+    const type = String(item?.type || "");
+    if (!["calendar", "slider", "choice", "field"].includes(type)) continue;
+    const id = String(item.id || type).replace(/[^\w-]/g, "").slice(0, 24) || `${type}-${widgets.length}`;
+    if (seen.has(id)) continue;
+    const prompt = String(item.prompt || "").trim().slice(0, 24);
+    if (!prompt) continue;
+    if (type === "calendar") {
+      const year = Number.isFinite(Number(item.year)) ? Number(item.year) : 2026;
+      const month = Number(item.month);
+      seen.add(id);
+      widgets.push({
+        type,
+        id,
+        prompt,
+        year: year >= 2024 && year <= 2028 ? year : 2026,
+        month: month >= 1 && month <= 12 ? month : 10,
+        text: String(item.text || "{m}月{d}日").slice(0, 48),
+      });
+    } else if (type === "slider") {
+      let min = Number(item.min);
+      let max = Number(item.max);
+      let step = Number(item.step);
+      let value = Number(item.value);
+      if (!Number.isFinite(min)) min = 0;
+      if (!Number.isFinite(max) || max <= min) max = min + 1000;
+      if (!Number.isFinite(step) || step <= 0) step = 1;
+      if (!Number.isFinite(value)) value = min;
+      value = Math.min(max, Math.max(min, value));
+      seen.add(id);
+      widgets.push({
+        type,
+        id,
+        prompt,
+        min,
+        max,
+        step,
+        value,
+        unit: String(item.unit || "").slice(0, 4),
+        text: String(item.text || "{value}").slice(0, 48),
+      });
+    } else if (type === "choice") {
+      const options = (Array.isArray(item.options) ? item.options : [])
+        .map((option) => ({
+          label: String(option?.label || "").trim().slice(0, 12),
+          text: String(option?.text || "").trim().slice(0, 48),
+        }))
+        .filter((option) => option.label && option.text)
+        .slice(0, 4);
+      if (options.length < 2) continue;
+      seen.add(id);
+      widgets.push({ type, id, prompt, options });
+    } else if (type === "field") {
+      const text = String(item.text || "{value}").slice(0, 48);
+      seen.add(id);
+      widgets.push({
+        type,
+        id,
+        prompt,
+        placeholder: String(item.placeholder || "写在这里").slice(0, 12),
+        text,
+      });
+    }
+  }
+  return widgets;
+}
+
+export function fallbackWidgets(sentence) {
+  const text = String(sentence || "").trim();
+  if (!text) return [];
+  const compact = text.replace(/\s+/g, "");
+  const dates = mentionedDates(compact);
+  const { from, to } = mentionedPlaces(compact);
+  const datedLeave = eventDated(compact, /退租|搬出|退房|到期|出发|离开/);
+  const datedArrive = eventDated(compact, /到达|抵达|入住/);
+  const datedWork = eventDated(compact, /报到|入职|上班|开学|实习/);
+  const work = /报到|入职|上班|开学|实习|公司/.test(compact);
+  const specificRelative = /月[初中底]/.test(compact);
+  const vagueMonth = /下个?月|这个?月|本月/.test(compact) && !dates.length && !specificRelative;
+  const widgets = [];
+  const { year, month } = hintedMonth(compact);
+
+  if (dates.length && !datedLeave && !datedArrive && !datedWork) {
+    const day = dates[0];
+    const options = [];
+    if (from) options.push({ label: `离开${from}`, text: `${day}离开${from}` });
+    if (to) options.push({ label: `到达${to}`, text: `${day}到达${to}` });
+    if (!from && !to) {
+      options.push({ label: "当天出发", text: `${day}出发` }, { label: "当天到达", text: `${day}到达` });
+    }
+    if (from) options.push({ label: `${from}退租`, text: `${day}在${from}退租` });
+    else options.push({ label: "当天退租", text: `${day}退租` });
+    if (work && to) options.push({ label: `${to}报到`, text: `${day}在${to}报到` });
+    widgets.push({ id: "date-role", type: "choice", prompt: `${day}是哪一天`, options: options.slice(0, 4) });
+  } else if (vagueMonth || (!dates.length && !specificRelative && !datedLeave && !datedArrive && !datedWork)) {
+    const where = to ? `到达${to}` : from ? `离开${from}` : "搬家";
+    widgets.push({
+      type: "calendar",
+      id: "when",
+      prompt: to ? `哪天到${to}` : from ? `哪天离开${from}` : "哪天搬家",
+      year,
+      month,
+      text: `{m}月{d}日${where}`,
+    });
+  }
+
+  if (!from || !to) {
+    let prompt = "从哪搬到哪";
+    let template = "{value}";
+    if (from && !to) {
+      prompt = `从${from}搬去哪`;
+      template = `搬去{value}`;
+    } else if (!from && to) {
+      prompt = `从哪搬去${to}`;
+      template = `从{value}搬去${to}`;
+    }
+    widgets.push({ type: "field", id: "place", prompt, placeholder: "城市", text: template });
+  }
+
+  const crossCity = !/同城|不跨城|区内/.test(compact) && ((from && to && from !== to) || /跨城|搬去|搬家去|搬到/.test(compact));
+  if (crossCity && !/高铁|火车|动车|飞机|航班|自驾|开车/.test(compact)) {
+    widgets.push({
+      id: "travel",
+      type: "choice",
+      prompt: to ? `人怎么去${to}` : "人怎么走",
+      options: [
+        { label: "高铁", text: to ? `人坐高铁去${to}` : "人坐高铁" },
+        { label: "飞机", text: to ? `人坐飞机去${to}` : "人坐飞机" },
+        { label: "自驾", text: "人自己开车" },
+      ],
+    });
+  }
+  if (crossCity && !/行李|快递|寄送|托运|随身/.test(compact)) {
+    widgets.push({
+      id: "luggage",
+      type: "choice",
+      prompt: "行李怎么走",
+      options: [
+        { label: "随身带走", text: "行李随身" },
+        { label: "快递寄送", text: "行李走快递" },
+        { label: "搬家公司", text: "行李跟搬家公司" },
+      ],
+    });
+  }
+
+  if (budgetFromSentence(text) == null) {
+    const cross = Boolean(from && to && from !== to);
+    widgets.push(sliderWidget("budget", "一次性预算", cross ? 2000 : 1000, cross ? 40000 : 20000, 500, cross ? 15000 : 6000, "元", "一次性预算{value}"));
+  }
+
+  if (work && commuteFromSentence(text) == null && /通勤|公司/.test(compact)) {
+    widgets.push(sliderWidget("commute", to ? `到${to}最多多久` : "通勤最多多久", 15, 90, 5, 45, "分钟", "通勤不超过{value}分钟"));
+  }
+
+  return widgets.slice(0, 4);
+}
+
+export function mergeWidgetGaps(sentence, widgets) {
+  const have = new Set();
+  for (const widget of widgets || []) {
+    const blob = `${widget.id} ${widget.prompt} ${widget.text || ""} ${(widget.options || []).map((option) => option.text).join(" ")}`;
+    if (widget.type === "slider" && /预算|元/.test(blob)) have.add("budget");
+    if (widget.type === "slider" && /通勤|分钟/.test(blob)) have.add("commute");
+    if (widget.type === "calendar" || widget.id === "when" || widget.id === "date-role") have.add("when");
+    if (widget.type === "choice" && /日|离开|到达|退租|出发|报到/.test(blob)) have.add("when");
+    if (widget.type === "field" || widget.id === "place") have.add("place");
+    if (widget.id === "travel" || (widget.type === "choice" && /高铁|飞机|自驾|火车|开车/.test(blob))) have.add("travel");
+    if (widget.id === "luggage" || (widget.type === "choice" && /行李|快递|托运|随身/.test(blob))) have.add("luggage");
+  }
+  const extras = fallbackWidgets(sentence).filter((widget) => {
+    const kind = widget.id === "date-role" || widget.id === "when" ? "when" : widget.id;
+    return !have.has(kind);
+  });
+  return [...(widgets || []), ...extras].slice(0, 4);
+}
+
+export function applyWidgets(sentence, widgets, picks) {
+  const base = String(sentence || "")
+    .trim()
+    .replace(/[。！？，,\s]+$/g, "");
+  const parts = [base];
+  for (const widget of widgets || []) {
+    const raw = picks?.[widget.id];
+    if (widget.type === "slider") {
+      const value = raw == null || raw === "" ? widget.value : Number(raw);
+      if (!Number.isFinite(value)) return { ok: false, missing: widget.id };
+      parts.push(fillTemplate(widget.text, { value: Math.round(value) }));
+      continue;
+    }
+    if (widget.type === "calendar") {
+      const match = String(raw || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!match) return { ok: false, missing: widget.id };
+      parts.push(fillTemplate(widget.text, { m: Number(match[2]), d: Number(match[3]) }));
+      continue;
+    }
+    if (widget.type === "choice") {
+      const option = widget.options.find((item) => item.text === raw);
+      if (!option) return { ok: false, missing: widget.id };
+      parts.push(option.text);
+      continue;
+    }
+    const value = String(raw || "").trim();
+    if (!value) return { ok: false, missing: widget.id };
+    parts.push(fillTemplate(widget.text, { value: value.replace(/[，,]/g, " ") }));
+  }
+  return { ok: true, sentence: parts.filter(Boolean).join("，") };
+}
+
 function dateFromMatch(month, day) {
   return `2026-${String(Number(month)).padStart(2, "0")}-${String(Number(day)).padStart(2, "0")}`;
 }

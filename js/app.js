@@ -4,6 +4,9 @@ import {
   applyConstraint,
   buyAmount,
   buySpec,
+  applyWidgets,
+  fallbackWidgets,
+  mergeWidgetGaps,
   classifyConstraint,
   clone,
   composePostText,
@@ -22,16 +25,17 @@ import {
   statusLabel,
   syncPlan,
   templateExplanation,
-} from "./engine.js?v=38";
+} from "./engine.js?v=43";
 import {
   canCallModel,
   classifyWithModel,
   generateExplanation,
   generatePlan,
   generatePost,
+  proposeWidgets,
   loadModelConfig,
   recognizeRoom,
-} from "./ai.js?v=38";
+} from "./ai.js?v=44";
 
 const state = {
   view: "start",
@@ -65,6 +69,7 @@ const state = {
   calYear: null,
   calMonth: null,
   tour: null,
+  clarify: null,
 };
 
 let toastTimer = null;
@@ -141,6 +146,8 @@ function micIcon() {
 
 function startHtml() {
   const generating = state.busy === "plan";
+  const arranging = state.busy === "clarify";
+  const locked = generating || arranging;
   const listening = state.listening;
   return `
     <main class="page-start">
@@ -152,13 +159,14 @@ function startHtml() {
           </div>
           <p class="lede">AI作伴，定制完整搬家计划</p>
           <div class="prompt-wrap" data-tour="prompt">
-            <textarea class="prompt" data-field="prompt" placeholder="输入你的需求" ${generating ? "disabled" : ""}>${esc(state.prompt)}</textarea>
-            <button class="btn-mic ${listening ? "is-on" : ""}" type="button" data-action="voice" ${generating ? "disabled" : ""} aria-label="${listening ? "停止语音输入" : "语音输入"}">${micIcon()}</button>
+            <textarea class="prompt" data-field="prompt" placeholder="输入你的需求" ${locked ? "disabled" : ""}>${esc(state.prompt)}</textarea>
+            <button class="btn-mic ${listening ? "is-on" : ""}" type="button" data-action="voice" ${locked ? "disabled" : ""} aria-label="${listening ? "停止语音输入" : "语音输入"}">${micIcon()}</button>
           </div>
+          ${arranging ? `<p class="iui-wait">正在按这句排界面</p>` : clarifyHtml()}
           <div class="btn-row">
-            <button class="btn btn-secondary" type="button" data-action="demo-run" data-tour="demo" ${generating ? "disabled" : ""}>Demo试运行</button>
-            <button class="btn btn-primary" type="button" data-action="generate" data-tour="generate" ${generating ? "disabled" : ""}>
-              ${generating ? `<span class="pulse"></span>生成中` : "生成计划"}
+            <button class="btn btn-secondary" type="button" data-action="demo-run" data-tour="demo" ${locked ? "disabled" : ""}>Demo试运行</button>
+            <button class="btn btn-primary" type="button" data-action="generate" data-tour="generate" ${locked ? "disabled" : ""}>
+              ${generating ? `<span class="pulse"></span>生成中` : arranging ? `<span class="pulse"></span>看原句` : "生成计划"}
             </button>
           </div>
           ${
@@ -173,6 +181,98 @@ function startHtml() {
         </section>
       </div>
     </main>
+  `;
+}
+
+function widgetCursor(widget) {
+  return state.clarify?.cursor?.[widget.id] || { year: widget.year, month: widget.month };
+}
+
+function sliderReadout(widget, picks) {
+  const raw = picks[widget.id];
+  const value = raw == null || raw === "" ? widget.value : Number(raw);
+  return `${Number(value).toLocaleString("zh-CN")}${widget.unit || ""}`;
+}
+
+function miniCalHtml(widget, picks) {
+  const cursor = widgetCursor(widget);
+  const year = cursor.year;
+  const month = cursor.month;
+  const first = new Date(year, month - 1, 1);
+  const offset = first.getDay();
+  const count = new Date(year, month, 0).getDate();
+  const selected = String(picks[widget.id] || "");
+  const cells = [];
+  for (let i = 0; i < offset; i += 1) cells.push(`<span class="iui-cal-pad"></span>`);
+  for (let day = 1; day <= count; day += 1) {
+    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const on = selected === iso;
+    cells.push(
+      `<button type="button" class="iui-cal-day${on ? " is-on" : ""}" data-action="clarify-day" data-gap="${esc(widget.id)}" data-value="${iso}" aria-pressed="${on ? "true" : "false"}" aria-label="${month}月${day}日">${day}</button>`,
+    );
+  }
+  return `
+    <div class="iui-cal">
+      <div class="iui-cal-nav">
+        <button type="button" class="cal-shift" data-action="clarify-month" data-gap="${esc(widget.id)}" data-delta="-1" aria-label="上个月">${chevronIcon("prev")}</button>
+        <div class="iui-cal-title">${year}年${month}月</div>
+        <button type="button" class="cal-shift" data-action="clarify-month" data-gap="${esc(widget.id)}" data-delta="1" aria-label="下个月">${chevronIcon("next")}</button>
+      </div>
+      <div class="iui-cal-grid">
+        ${["日", "一", "二", "三", "四", "五", "六"].map((name) => `<span class="iui-cal-dow">${name}</span>`).join("")}
+        ${cells.join("")}
+      </div>
+    </div>
+  `;
+}
+
+function widgetBody(widget, picks) {
+  if (widget.type === "calendar") return miniCalHtml(widget, picks);
+  if (widget.type === "slider") {
+    const raw = picks[widget.id] == null || picks[widget.id] === "" ? widget.value : picks[widget.id];
+    return `
+      <div class="iui-slider">
+        <div class="iui-slider-value">${esc(sliderReadout(widget, picks))}</div>
+        <input type="range" data-field="widget-slider" data-gap="${esc(widget.id)}" data-unit="${esc(widget.unit || "")}" min="${widget.min}" max="${widget.max}" step="${widget.step}" value="${esc(raw)}" aria-label="${esc(widget.prompt)}" />
+        <div class="iui-slider-scale"><span>${esc(Number(widget.min).toLocaleString("zh-CN"))}</span><span>${esc(Number(widget.max).toLocaleString("zh-CN"))}</span></div>
+      </div>
+    `;
+  }
+  if (widget.type === "choice") {
+    const pick = String(picks[widget.id] || "");
+    return `
+      <div class="iui-options" role="group" aria-labelledby="iui-${widget.id}">
+        ${widget.options
+          .map(
+            (option) =>
+              `<button type="button" class="${pick === option.text ? "is-on" : ""}" data-action="clarify-pick" data-gap="${esc(widget.id)}" data-value="${esc(option.text)}" aria-pressed="${pick === option.text ? "true" : "false"}">${esc(option.label)}</button>`,
+          )
+          .join("")}
+      </div>
+    `;
+  }
+  return `<input class="iui-custom iui-field" data-field="clarify" data-gap="${esc(widget.id)}" value="${esc(picks[widget.id] || "")}" placeholder="${esc(widget.placeholder || "")}" aria-label="${esc(widget.prompt)}" />`;
+}
+
+function clarifyHtml() {
+  if (!state.clarify || state.busy) return "";
+  const widgets = state.clarify.widgets || [];
+  if (!widgets.length) return "";
+  const picks = state.clarify.picks || {};
+  return `
+    <section class="iui" aria-label="按原句补上没写清的信息">
+      <h2 class="iui-title">这几项还没说清</h2>
+      ${widgets
+        .map(
+          (widget) => `
+            <div class="iui-q">
+              <div class="iui-label" id="iui-${esc(widget.id)}">${esc(widget.prompt)}</div>
+              ${widgetBody(widget, picks)}
+            </div>
+          `,
+        )
+        .join("")}
+    </section>
   `;
 }
 
@@ -1697,11 +1797,54 @@ function buildDemoPlan() {
 
 function onDemoGenerate() {
   if (state.busy) return;
+  state.clarify = null;
   state.prompt = DEFAULT_PROMPT;
   runGenerate({ mock: true });
 }
 
-function onGenerate() {
+async function onGenerate() {
+  if (state.busy) return;
+  const sentence = state.prompt.trim();
+  if (!sentence) {
+    showToast("请输入搬家计划");
+    return;
+  }
+  if (state.clarify?.sentence !== sentence) {
+    state.busy = "clarify";
+    render();
+    let widgets = null;
+    if (canCallModel(state.model)) {
+      try {
+        widgets = await proposeWidgets({ config: state.model, sentence });
+      } catch {
+        widgets = null;
+      }
+    }
+    if (state.busy !== "clarify") return;
+    if (!widgets) widgets = fallbackWidgets(sentence);
+    else widgets = mergeWidgetGaps(sentence, widgets);
+    state.busy = null;
+    if (!widgets.length) {
+      state.clarify = null;
+      runGenerate({ mock: false });
+      return;
+    }
+    const picks = {};
+    widgets.forEach((widget) => {
+      if (widget.type === "slider") picks[widget.id] = String(widget.value);
+    });
+    state.clarify = { sentence, widgets, picks, cursor: {} };
+    render();
+    return;
+  }
+  const filled = applyWidgets(sentence, state.clarify.widgets, state.clarify.picks);
+  if (!filled.ok) {
+    const widget = state.clarify.widgets.find((item) => item.id === filled.missing);
+    showToast(`先补上${widget?.prompt || "这一项"}`);
+    return;
+  }
+  state.prompt = filled.sentence;
+  state.clarify = null;
   runGenerate({ mock: false });
 }
 
@@ -1872,6 +2015,7 @@ function resetDemo() {
   state.queryDraft = "";
   state.calYear = null;
   state.calMonth = null;
+  state.clarify = null;
   render();
 }
 
@@ -1890,6 +2034,24 @@ function onClick(event) {
     return;
   }
   if (action === "generate") onGenerate();
+  if (action === "clarify-pick") {
+    if (!state.clarify) return;
+    state.clarify.picks[target.dataset.gap] = target.dataset.value;
+    render();
+  }
+  if (action === "clarify-day") {
+    if (!state.clarify) return;
+    state.clarify.picks[target.dataset.gap] = target.dataset.value;
+    render();
+  }
+  if (action === "clarify-month") {
+    const widget = state.clarify?.widgets?.find((item) => item.id === target.dataset.gap);
+    if (!widget) return;
+    const cursor = state.clarify.cursor[widget.id] || { year: widget.year, month: widget.month };
+    const date = new Date(cursor.year, cursor.month - 1 + Number(target.dataset.delta), 1);
+    state.clarify.cursor[widget.id] = { year: date.getFullYear(), month: date.getMonth() + 1 };
+    render();
+  }
   if (action === "edit-query") beginEditQuery();
   if (action === "cancel-query") {
     state.editingQuery = false;
@@ -1986,6 +2148,17 @@ function onClick(event) {
 function onInput(event) {
   const field = event.target.dataset.field;
   if (field === "prompt") state.prompt = event.target.value;
+  if (field === "clarify" && state.clarify) {
+    state.clarify.picks[event.target.dataset.gap] = event.target.value;
+  }
+  if (field === "widget-slider" && state.clarify) {
+    state.clarify.picks[event.target.dataset.gap] = event.target.value;
+    const readout = event.target.closest(".iui-slider")?.querySelector(".iui-slider-value");
+    if (readout) {
+      const unit = event.target.dataset.unit || "";
+      readout.textContent = `${Number(event.target.value).toLocaleString("zh-CN")}${unit}`;
+    }
+  }
   if (field === "append") state.appendDraft = event.target.value;
   if (field === "query") state.queryDraft = event.target.value;
 }

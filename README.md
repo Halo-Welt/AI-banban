@@ -6,7 +6,7 @@
 
 没有登录，没有云端存档，房源和价格来自本地数据。模型负责读原句、写转卖帖和说明这次为什么变；筛房、算账、砍置办由前端规则完成。模型调不通时，会落到内置剧本，看板结构不变。
 
-GitHub Pages 上没有 `/api/chat`。页面发现这层转发不可用时，会由浏览器直接请求 DeepSeek。Key 不进仓库，发布时从仓库 Secret `DEEPSEEK_API_KEY` 写进页面。公开站点的脚本里能看到这把 Key，请在 DeepSeek 控制台限制用量。
+本地预览时，密钥只在 `server.py` 的环境变量 `DEEPSEEK_API_KEY`（或未提交的 `.env`）里，页面请求同源 `/api/chat`。GitHub Pages 没有服务器，发布时从仓库 Secret 把同一把密钥写入构建后的页面，线上才能调用模型。源码仓库里不保存密钥。公开站点的脚本里能看到这把密钥，请在 DeepSeek 控制台限制用量。
 
 ## 本地运行
 
@@ -24,7 +24,7 @@ npm start
 
 浏览器打开 [http://127.0.0.1:8766/](http://127.0.0.1:8766/)。
 
-`server.py` 同时做两件事：提供静态页面，并把 `/api/chat` 转发到 DeepSeek。直接用 `python3 -m http.server` 也能打开页面，但没有这层转发时，模型请求更容易失败，界面会改用内置剧本。
+`server.py` 提供静态页面，并用本机的 `DEEPSEEK_API_KEY` 把 `/api/chat` 转到 DeepSeek。直接用 `python3 -m http.server` 也能打开页面，但没有密钥，模型请求会失败，界面改用内置剧本。
 
 ## 建议走一遍
 
