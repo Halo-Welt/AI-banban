@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>搬伴 · 槽位拼图试看</title>
+    <style>
+      :root {
+        --red: #ff2442;
+        --red-btn: #ff2e4d;
+        --red-press: #e01f3d;
+        --red-tint: #ffecef;
+        --canvas: #f5f5f5;
+        --surface: #ffffff;
+        --fill-1: rgba(48, 48, 52, 0.05);
+        --fill-2: rgba(48, 48, 52, 0.1);
+        --title: rgba(0, 0, 0, 0.8);
+        --body: rgba(0, 0, 0, 0.62);
+        --caption: rgba(0, 0, 0, 0.45);
+        --line: rgba(0, 0, 0, 0.08);
+        --font: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--canvas);
+        color: var(--title);
+        font-family: var(--font);
+        font-size: 14px;
+        line-height: 22px;
+      }
+
+      button, input, textarea { font-family: inherit; font-size: inherit; }
+      button { cursor: pointer; }
+      button:disabled { cursor: default; opacity: 0.55; }
+      button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+      h1, h2, h3, p { margin: 0; }
+
+      .topbar {
+        height: 56px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+        position: sticky;
+        top: 0;
+        z-index: 5;
+      }
+
+      .brand { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; }
+      .top-note { color: var(--caption); font-size: 13px; }
+
+      .wrap { width: min(1040px, calc(100% - 32px)); margin: 0 auto; padding: 16px 0 40px; }
+
+      .intro h1 { font-size: 16px; font-weight: 600; line-height: 24px; }
+      .lede { margin-top: 4px; color: var(--body); max-width: 62em; }
+
+      .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 10px 0 0; padding: 0; list-style: none; color: var(--caption); font-size: 12px; }
+      .legend li { display: flex; align-items: center; gap: 6px; }
+      .swatch { width: 16px; height: 16px; border-radius: 4px; display: block; border: 1px solid rgba(0, 0, 0, 0.08); }
+      .swatch.query { background: #ffd5dc; border-color: var(--red); }
+      .swatch.memory { background: #fff; border-color: rgba(255, 36, 66, 0.35); box-shadow: inset 3px 0 0 var(--red); }
+      .swatch.empty { background: #fff; border: 1px dashed rgba(0, 0, 0, 0.35); }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 280px;
+        gap: 16px;
+        align-items: start;
+        margin-top: 12px;
+      }
+
+      .main-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+      .card { background: var(--surface); border-radius: 16px; padding: 16px; }
+
+      .prompt {
+        width: 100%;
+        min-height: 64px;
+        border: 0;
+        border-radius: 16px;
+        background: var(--canvas);
+        padding: 12px 16px;
+        color: var(--title);
+        resize: vertical;
+        outline: none;
+        line-height: 22px;
+      }
+      .prompt:focus { box-shadow: inset 0 0 0 1.5px var(--red); }
+
+      .composer-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+      .presets { display: flex; flex-wrap: wrap; gap: 8px; flex: 1; }
+
+      .chip, .btn {
+        border: 0;
+        border-radius: 999px;
+        line-height: 22px;
+      }
+      .chip { background: var(--fill-2); color: var(--title); padding: 6px 12px; }
+      .chip:hover:not(:disabled) { background: var(--fill-1); }
+      .chip.is-on { background: var(--red-tint); color: var(--red); }
+      .btn { padding: 8px 16px; }
+      .btn-primary { background: var(--red-btn); color: #fff; }
+      .btn-primary:hover:not(:disabled) { background: var(--red-press); }
+      .btn-secondary { background: var(--fill-2); color: var(--title); }
+      .btn-secondary:hover:not(:disabled) { background: var(--fill-1); }
+
+      .board-head h2, .memories h2, .log-title { font-size: 16px; font-weight: 600; line-height: 24px; }
+      #status { min-height: 22px; margin: 4px 0 8px; color: var(--body); }
+
+      .sentence {
+        min-height: 28px;
+        margin: 0 0 10px;
+        font-size: 18px;
+        font-weight: 600;
+        line-height: 28px;
+      }
+      .sentence mark {
+        color: var(--red);
+        background: var(--red-tint);
+        text-decoration: underline;
+        text-underline-offset: 4px;
+        border-radius: 2px;
+        padding: 0 2px;
+      }
+
+      .sockets {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .socket:nth-child(-n + 3) { grid-column: span 2; }
+      .socket:nth-child(n + 4) { grid-column: span 3; }
+
+      .socket {
+        position: relative;
+        min-height: 96px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px dashed rgba(0, 0, 0, 0.18);
+        background: var(--canvas);
+      }
+      .socket.is-query, .socket.is-asked {
+        border-style: solid;
+        border-color: transparent;
+        background: var(--red-tint);
+      }
+      .socket.is-memory {
+        border-style: solid;
+        border-color: rgba(255, 36, 66, 0.28);
+        background: #fff;
+        box-shadow: inset 3px 0 0 var(--red);
+      }
+      .socket.is-hold { border-style: dashed; border-color: var(--red); background: #fff; }
+      .socket.is-asking { border-style: solid; border-color: var(--red); }
+      .socket.is-skip { background: transparent; }
+      .socket.is-land .socket-value { animation: land 0.28s ease; }
+
+      .knob { display: none; }
+      @media (min-width: 841px) {
+        .socket:nth-child(2).is-in .knob,
+        .socket:nth-child(3).is-in .knob,
+        .socket:nth-child(5).is-in .knob {
+          display: block;
+          position: absolute;
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          background: var(--canvas);
+          border: 1.5px solid var(--red);
+          left: -8px;
+          top: 50%;
+          margin-top: -7px;
+        }
+      }
+
+      .socket-label { font-size: 12px; line-height: 18px; color: var(--caption); }
+      .socket-value { margin-top: 4px; font-size: 16px; font-weight: 600; line-height: 24px; }
+      .socket.is-empty .socket-value, .socket.is-skip .socket-value {
+        font-size: 14px;
+        font-weight: 400;
+        color: var(--caption);
+      }
+      .socket-tag {
+        display: inline-block;
+        margin-top: 6px;
+        color: var(--red);
+        font-size: 12px;
+        line-height: 18px;
+      }
+      .socket-cite { margin-top: 4px; color: var(--caption); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+
+      .ask { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+      .ask-kicker { color: var(--red); font-size: 12px; line-height: 18px; }
+      .ask-title { margin: 4px 0 12px; font-size: 16px; font-weight: 600; line-height: 24px; }
+      .ask-options, .ask-custom { display: flex; flex-wrap: wrap; gap: 8px; }
+      .ask-custom { margin-top: 8px; }
+      .ask-custom input {
+        flex: 1;
+        min-width: 140px;
+        border: 0;
+        background: var(--canvas);
+        border-radius: 999px;
+        padding: 8px 14px;
+        color: var(--title);
+        outline: none;
+      }
+      .ask-custom input:focus { box-shadow: inset 0 0 0 1.5px var(--red); }
+      .ask-error, .ask-note { margin-top: 8px; font-size: 12px; line-height: 18px; }
+      .ask-error { color: var(--red); }
+      .ask-note { color: var(--caption); }
+      .ask-done .ask-title { margin-bottom: 12px; }
+
+      .log-title { margin: 18px 0 8px; font-size: 14px; }
+      .log { margin: 0; padding-left: 20px; color: var(--body); }
+      .log li { margin: 6px 0; padding-left: 4px; }
+      .log-empty { list-style: none; margin-left: -20px; color: var(--caption); }
+      .log b { color: var(--title); font-weight: 600; }
+      .log .src { color: var(--red); }
+      .log .cite { display: block; color: var(--caption); font-size: 12px; line-height: 18px; }
+
+      .memories h2 { margin-bottom: 10px; }
+      .slips { display: flex; flex-direction: column; gap: 8px; }
+      .slip {
+        background: var(--surface);
+        border-radius: 12px;
+        border-left: 2px dashed rgba(0, 0, 0, 0.16);
+        padding: 12px 14px 12px 12px;
+      }
+      .slip.is-hot, .slip.is-used { background: var(--red-tint); border-left-style: solid; border-left-color: var(--red); }
+      .slip-kicker { font-size: 12px; line-height: 18px; color: var(--caption); }
+      .slip.is-used .slip-kicker, .slip.is-used .slip-state { color: var(--red); }
+      .slip-fact { margin-top: 2px; font-weight: 600; }
+      .slip-extra, .slip-state { margin-top: 2px; font-size: 12px; line-height: 18px; color: var(--caption); }
+      .slip-state:empty { display: none; }
+
+      .flyer {
+        position: fixed;
+        z-index: 30;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: max-content;
+        max-width: 220px;
+        padding: 4px 10px;
+        border-radius: 8px;
+        background: var(--red-tint);
+        color: var(--red);
+        font-weight: 600;
+        line-height: 22px;
+        pointer-events: none;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+      }
+
+      @keyframes land { from { transform: translateY(4px); } to { transform: none; } }
+      @keyframes log-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+      .log li:not(.log-empty) { animation: log-in 0.3s ease; }
+
+      @media (max-width: 840px) {
+        .layout { grid-template-columns: 1fr; }
+        .topbar { padding: 0 16px; }
+        .wrap { width: min(1040px, calc(100% - 24px)); }
+        .sockets { grid-template-columns: 1fr 1fr; }
+        .socket:nth-child(n) { grid-column: auto; }
+        .socket:nth-child(5) { grid-column: 1 / -1; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .socket.is-land .socket-value, .log li:not(.log-empty) { animation: none; }
+        .slip { transition: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true">
+          <rect width="32" height="32" rx="8" fill="#FF2442" />
+          <path fill="#fff" d="M4.2 15.8 8.8 11.2 13.4 15.8V21.2H4.2z" />
+          <path fill="#fff" d="M18.2 14.4 23.2 9.2 28.2 14.4V22H18.2z" />
+          <path d="M7.2 24.6c2.2 2.4 15.2 2.4 17.6 0" stroke="#fff" stroke-width="2.4" stroke-linecap="round" />
+        </svg>
+        搬伴
+      </div>
+      <p class="top-note">试看，还没放进搬伴</p>
+    </header>
+    <main class="wrap">
+      <section class="intro">
+        <h1>把这句话拆进槽位</h1>
+        <p class="lede">原句里有的先扣上。日历、定位、历史订单能补的先补，并写明用了哪一条。还空着的再问。</p>
+        <ul class="legend">
+          <li><i class="swatch query"></i>原句扣上</li>
+          <li><i class="swatch memory"></i>记忆补上，写明来源</li>
+          <li><i class="swatch empty"></i>还缺，先问</li>
+        </ul>
+      </section>
+      <div class="layout">
+        <div class="main-col">
+          <section class="card composer">
+            <textarea id="sentence-input" class="prompt" rows="3" placeholder="输入你的需求" spellcheck="false"></textarea>
+            <div class="composer-bar">
+              <div class="presets" role="group" aria-label="试一句">
+                <button type="button" class="chip" data-preset="work">去上班</button>
+                <button type="button" class="chip" data-preset="full">说全了</button>
+                <button type="button" class="chip" data-preset="budget">只说了预算</button>
+                <button type="button" class="chip" data-preset="date">日期没对上</button>
+              </div>
+              <button type="button" class="btn btn-primary" id="go">拼上</button>
+            </div>
+          </section>
+          <section class="card board" aria-label="槽位拼图">
+            <div class="board-head"><h2>拼图</h2></div>
+            <p id="status" aria-live="polite"></p>
+            <p id="sentence" class="sentence"></p>
+            <div class="sockets" role="list">
+              <article class="socket is-empty" data-slot="from" role="listitem"></article>
+              <article class="socket is-empty" data-slot="when" role="listitem"></article>
+              <article class="socket is-empty" data-slot="to" role="listitem"></article>
+              <article class="socket is-empty" data-slot="budget" role="listitem"></article>
+              <article class="socket is-empty" data-slot="commute" role="listitem"></article>
+            </div>
+            <div id="ask"></div>
+            <h3 class="log-title">怎么拼上的</h3>
+            <ol id="log" class="log"><li class="log-empty">拼完以后，按顺序写每块的来源。</li></ol>
+          </section>
+        </div>
+        <aside class="memories">
+          <h2>可以拿来补的</h2>
+          <div class="slips">
+            <article class="slip" data-memory="calendar">
+              <p class="slip-kicker">日历</p>
+              <p class="slip-fact">7月15日 · 上海陆家嘴报到</p>
+              <p class="slip-state"></p>
+            </article>
+            <article class="slip" data-memory="location">
+              <p class="slip-kicker">定位</p>
+              <p class="slip-fact">当前在北京</p>
+              <p class="slip-state"></p>
+            </article>
+            <article class="slip" data-memory="order">
+              <p class="slip-kicker">历史订单</p>
+              <p class="slip-fact">上次通勤不超过 45 分钟</p>
+              <p class="slip-extra">预算不沿用</p>
+              <p class="slip-state"></p>
+            </article>
+          </div>
+        </aside>
+      </div>
+    </main>
+    <script>
+      const SLOTS = [
+        { id: "from", label: "出发地" },
+        { id: "when", label: "日期" },
+        { id: "to", label: "目的地" },
+        { id: "budget", label: "预算" },
+        { id: "commute", label: "通勤时间" },
+      ];
+      const PRESETS = {
+        work: "下个月去上海上班",
+        full: "6月30日北京退租，7月15日上海报到，一次性预算8000，通勤不超过45分钟。",
+        budget: "预算6000，人在杭州",
+        date: "11月1日从深圳搬去长沙，预算一万二",
+      };
+      const CITE = {
+        日历: "用了日历：7月15日 · 上海陆家嘴报到",
+        定位: "用了定位：当前在北京",
+        历史订单: "用了历史订单：上次通勤不超过 45 分钟",
+      };
+      const CN = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const state = { token: 0 };
+      let session = null;
+
+      function esc(value) {
+        return String(value).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+      }
+
+      function formatYuan(value) {
+        return `¥${Number(value).toLocaleString("zh-CN")}`;
+      }
+
+      function wait(ms) {
+        if (reduceMotion) return Promise.resolve();
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      function compactMap(text) {
+        let compact = "";
+        const map = [];
+        for (let i = 0; i < text.length; i += 1) {
+          if (/\s/.test(text[i])) continue;
+          map.push(i);
+          compact += text[i];
+        }
+        return { compact, map };
+      }
+
+      function rangeFromCompact(map, start, end) {
+        if (start < 0 || end > map.length || end <= start) return null;
+        return { start: map[start], end: map[end - 1] + 1 };
+      }
+
+      function cutPlace(name) {
+        return String(name || "")
+          .replace(/(坐|乘|搭|实习|报到|入职|上班|开学|搬家|出发|退租|入住|搬出).*$/, "")
+          .replace(/(市|城区)$/, "")
+          .slice(0, 8);
+      }
+
+      function cleanCity(name) {
+        const cut = cutPlace(name);
+        const stripped = cut.replace(/^[日月号]/, "");
+        return (stripped.length >= 2 ? stripped : cut).slice(0, 8);
+      }
+
+      function cityAt(match, group) {
+        const raw = match[group] || "";
+        const city = cleanCity(raw);
+        if (city.length < 2) return null;
+        const local = raw.indexOf(city);
+        return { city, index: match.index + match[0].indexOf(raw) + (local < 0 ? 0 : local) };
+      }
+
+      function mentionedPlaces(compact) {
+        let from = "";
+        let to = "";
+        let fromIndex = -1;
+        let toIndex = -1;
+        const fromMatch = compact.match(/从([\u4e00-\u9fa5]{2,8}?)(?:搬家|搬去|搬到|出发|去|到)/);
+        const pickedFrom = fromMatch ? cityAt(fromMatch, 1) : null;
+        if (pickedFrom) {
+          from = pickedFrom.city;
+          fromIndex = pickedFrom.index;
+        }
+        const toMatch = compact.match(/搬家去([\u4e00-\u9fa5]{2,8})/) || compact.match(/(?:搬去|搬到|去到|到达|抵达)([\u4e00-\u9fa5]{2,8})/);
+        const pickedTo = toMatch ? cityAt(toMatch, 1) : null;
+        if (pickedTo) {
+          to = pickedTo.city;
+          toIndex = pickedTo.index;
+        }
+        if (!from) {
+          const leave = compact.match(/([\u4e00-\u9fa5]{2,8})(?:退租|出发|搬出|离开)/);
+          const picked = leave ? cityAt(leave, 1) : null;
+          if (picked) {
+            from = picked.city;
+            fromIndex = picked.index;
+          }
+        }
+        if (!to) {
+          const arrive =
+            compact.match(/(?:去|到)([\u4e00-\u9fa5]{2,8}?)(?:报到|入职|上班|开学|实习|入住)/) ||
+            compact.match(/([\u4e00-\u9fa5]{2,8})(?:报到|入职|实习)/) ||
+            compact.match(/(?:去|到)([\u4e00-\u9fa5]{2,6})(?=[，,。]|$)/);
+          const picked = arrive ? cityAt(arrive, 1) : null;
+          if (picked) {
+            to = picked.city;
+            toIndex = picked.index;
+          }
+        }
+        const here = compact.match(/(?:人在|我在|目前在|现在在)([\u4e00-\u9fa5]{2,6})/);
+        const pickedHere = here ? cityAt(here, 1) : null;
+        if (pickedHere) {
+          from = pickedHere.city;
+          fromIndex = pickedHere.index;
+        }
+        if (from && to && from === to) {
+          to = "";
+          toIndex = -1;
+        }
+        return { from, to, fromIndex, toIndex };
+      }
+
+      function parseChineseMoney(chunk) {
+        const text = String(chunk || "").replace(/\s+/g, "");
+        if (!text) return null;
+        const wanDigit = text.match(/^(\d+(?:\.\d+)?)万([一二三四五六七八九两])?$/);
+        if (wanDigit) return Math.round(Number(wanDigit[1]) * 10000 + (wanDigit[2] ? CN[wanDigit[2]] * 1000 : 0));
+        const wan = text.match(/^([一二三四五六七八九两])?万([一二三四五六七八九两])?$/);
+        if (wan) return (wan[1] ? CN[wan[1]] : 1) * 10000 + (wan[2] ? CN[wan[2]] * 1000 : 0);
+        const qian = text.match(/^([一二三四五六七八九两])千([一二三四五六七八九])?$/);
+        if (qian) return CN[qian[1]] * 1000 + (qian[2] ? CN[qian[2]] * 100 : 0);
+        return null;
+      }
+
+      function budgetFromSentence(sentence) {
+        const digit = sentence.match(/预算\s*(\d{3,6})/) || sentence.match(/(\d{4,6})\s*元/);
+        if (digit) {
+          const value = Number(digit[1]);
+          if (value >= 1000 && value <= 200000) return value;
+        }
+        const wan = sentence.match(/预算\s*(\d+(?:\.\d+)?)\s*万/) || sentence.match(/一次性[^\n]{0,6}(\d+(?:\.\d+)?)\s*万/);
+        if (wan) {
+          const value = Math.round(Number(wan[1]) * 10000);
+          if (value >= 1000 && value <= 200000) return value;
+        }
+        const cn = sentence.match(/预算\s*([一二三四五六七八九十两零\d.万千]+)/) || sentence.match(/一次性[^\n]{0,8}([一二三四五六七八九十两零\d.万千]+)/);
+        if (cn) {
+          const value = parseChineseMoney(cn[1]);
+          if (value >= 1000 && value <= 200000) return value;
+        }
+        const loose = sentence.match(/(\d{4,6})/);
+        if (loose && /预算|一次性/.test(sentence)) {
+          const value = Number(loose[1]);
+          if (value >= 1000 && value <= 200000) return value;
+        }
+        return null;
+      }
+
+      function commuteFromSentence(sentence) {
+        if (/半小时|半个小时/.test(sentence)) return 30;
+        if (/一个小时|1\s*小时|六十分钟/.test(sentence)) return 60;
+        if (/四十五分钟/.test(sentence)) return 45;
+        const cap = sentence.match(/通勤[^\d]{0,8}(\d{2,3})/) || sentence.match(/不超过\s*(\d{2,3})\s*分钟/) || sentence.match(/(\d{2,3})\s*分钟/);
+        if (!cap) return null;
+        const value = Number(cap[1]);
+        return value >= 20 && value <= 120 ? value : null;
+      }
+
+      function budgetHit(compact) {
+        const value = budgetFromSentence(compact);
+        if (value == null) return null;
+        const patterns = [/一次性预算\s*\d{3,6}/, /预算\s*\d{3,6}/, /预算\s*\d+(?:\.\d+)?\s*万/, /预算\s*[一二三四五六七八九十两零\d.万千]+/, /\d{4,6}\s*元/];
+        for (const pattern of patterns) {
+          const match = pattern.exec(compact);
+          if (!match) continue;
+          return { value: formatYuan(value), mark: match[0].replace(/\s+/g, ""), index: match.index };
+        }
+        const index = compact.indexOf(String(value));
+        return { value: formatYuan(value), mark: String(value), index: index < 0 ? 0 : index };
+      }
+
+      function commuteHit(compact) {
+        const minutes = commuteFromSentence(compact);
+        if (minutes == null) return null;
+        const capped = /不超过|以内|最多/.test(compact);
+        const patterns = [/通勤不超过\s*\d{2,3}\s*分钟/, /不超过\s*\d{2,3}\s*分钟/, /通勤[^\d]{0,8}\d{2,3}\s*分钟/, /\d{2,3}\s*分钟/, /半个?小时/, /一个小时/, /四十五分钟/];
+        let found = null;
+        for (const pattern of patterns) {
+          const match = pattern.exec(compact);
+          if (match) {
+            found = match;
+            break;
+          }
+        }
+        return {
+          value: capped ? `不超过 ${minutes} 分钟` : `${minutes} 分钟`,
+          mark: found ? found[0].replace(/\s+/g, "") : `${minutes}分钟`,
+          index: found ? found.index : 0,
+        };
+      }
+
+      function dateHits(compact) {
+        const hits = [];
+        const parts = compact.split(/[，,。；;！!？?\n]/);
+        let cursor = 0;
+        for (const clause of parts) {
+          const at = compact.indexOf(clause, cursor);
+          if (at < 0) continue;
+          cursor = at + clause.length;
+          const match = clause.match(/(\d{1,2})月(\d{1,2})日?/);
+          if (!match) continue;
+          const day = `${Number(match[1])}月${Number(match[2])}日`;
+          let role = "";
+          if (/退租|搬出|退房|到期/.test(clause)) role = "退租";
+          else if (/报到|入职|上班|开学|实习/.test(clause)) role = "报到";
+          else if (/到达|抵达|入住/.test(clause)) role = "到达";
+          else if (/出发|离开/.test(clause)) role = "出发";
+          hits.push({
+            slot: "when",
+            value: role ? `${day}${role}` : day,
+            mark: match[0].replace(/\s+/g, ""),
+            index: at + match.index,
+            ambiguous: !role,
+            append: Boolean(role),
+          });
+        }
+        return hits;
+      }
+
+      function looksLikeMove(compact, hits) {
+        return hits.length > 0 || /搬|退租|报到|入职|上班|实习|通勤|预算|出发|入住/.test(compact);
+      }
+
+      function analyze(text) {
+        const source = String(text || "").trim();
+        const { compact, map } = compactMap(source);
+        const hits = [];
+        const places = mentionedPlaces(compact);
+        if (places.from) hits.push({ slot: "from", value: places.from, mark: places.from, index: places.fromIndex, append: false });
+        if (places.to) hits.push({ slot: "to", value: places.to, mark: places.to, index: places.toIndex, append: false });
+        hits.push(...dateHits(compact));
+        const budget = budgetHit(compact);
+        if (budget) hits.push({ slot: "budget", value: budget.value, mark: budget.mark, index: budget.index, append: false });
+        const commute = commuteHit(compact);
+        if (commute) hits.push({ slot: "commute", value: commute.value, mark: commute.mark, index: commute.index, append: false });
+        if (!looksLikeMove(compact, hits)) {
+          return { unrecognized: true, steps: [], skips: [], asks: [], ranges: [], work: false };
+        }
+
+        const work = /报到|入职|上班|开学|实习|公司|通勤/.test(compact);
+        const vague = /下个?月|这个?月|本月/.test(compact) && !/(\d{1,2})月(\d{1,2})/.test(compact);
+        hits.sort((a, b) => a.index - b.index);
+        const steps = [];
+        const claimed = new Set();
+        const running = {};
+        hits.forEach((hit) => {
+          if (hit.ambiguous) {
+            steps.push({
+              slot: "when",
+              status: "hold",
+              value: hit.value,
+              source: "原句",
+              cite: "",
+              mark: hit.mark,
+              index: hit.index,
+              flyText: hit.value,
+              askKind: "date-role",
+              pending: hit.value,
+            });
+            claimed.add("when");
+            return;
+          }
+          running[hit.slot] = hit.append && running[hit.slot] ? `${running[hit.slot]} · ${hit.value}` : hit.value;
+          steps.push({
+            slot: hit.slot,
+            status: "query",
+            value: running[hit.slot],
+            source: "原句",
+            cite: "",
+            mark: hit.mark,
+            index: hit.index,
+            flyText: hit.value,
+          });
+          claimed.add(hit.slot);
+        });
+
+        if (!claimed.has("from")) {
+          steps.push({ slot: "from", status: "memory", value: "北京", source: "定位", cite: CITE.定位, flyText: "北京" });
+          claimed.add("from");
+        }
+        if (!claimed.has("to") && work) {
+          steps.push({ slot: "to", status: "memory", value: "上海", source: "日历", cite: CITE.日历, flyText: "上海" });
+          claimed.add("to");
+        }
+        if (!claimed.has("when") && work) {
+          const cite = vague ? `原句只说到月份。${CITE.日历}` : CITE.日历;
+          steps.push({ slot: "when", status: "memory", value: "7月15日报到", source: "日历", cite, flyText: "7月15日报到" });
+          claimed.add("when");
+        }
+        if (!claimed.has("commute") && work) {
+          steps.push({
+            slot: "commute",
+            status: "memory",
+            value: "不超过 45 分钟",
+            source: "历史订单",
+            cite: CITE.历史订单,
+            flyText: "不超过 45 分钟",
+          });
+          claimed.add("commute");
+        }
+
+        const skips = !work && !claimed.has("commute") ? ["commute"] : [];
+        const asks = [];
+        SLOTS.forEach((slot) => {
+          if (skips.includes(slot.id)) return;
+          const held = steps.some((step) => step.slot === slot.id && step.status === "hold");
+          if (held || !claimed.has(slot.id)) asks.push(slot.id);
+        });
+        steps.forEach((step, index) => {
+          step.i = index;
+        });
+        const ranges = [];
+        steps.forEach((step) => {
+          if (!step.mark || step.index == null) return;
+          const end = step.index + step.mark.length;
+          if (compact.slice(step.index, end) !== step.mark) return;
+          const range = rangeFromCompact(map, step.index, end);
+          if (!range) return;
+          ranges.push({ ...range, slot: step.slot, step: step.i });
+        });
+        return { unrecognized: false, steps, skips, asks, ranges, work };
+      }
+
+      function blankSlot() {
+        return { status: "empty", value: "", source: "", cite: "", askKind: "", pending: "" };
+      }
+
+      function slotLabel(id) {
+        return SLOTS.find((slot) => slot.id === id).label;
+      }
+
+      function sentenceHtml(text, ranges) {
+        const sorted = ranges.slice().sort((a, b) => a.start - b.start);
+        let html = "";
+        let cursor = 0;
+        sorted.forEach((range) => {
+          if (range.start < cursor || range.end <= range.start) return;
+          html += esc(text.slice(cursor, range.start));
+          html += `<mark data-step="${range.step}">${esc(text.slice(range.start, range.end))}</mark>`;
+          cursor = range.end;
+        });
+        html += esc(text.slice(cursor));
+        return html;
+      }
+
+      function renderSocket(id, land) {
+        const slot = session.live[id];
+        const el = document.querySelector(`[data-slot="${id}"]`);
+        const filled = ["query", "memory", "asked", "hold"].includes(slot.status);
+        const classes = ["socket", `is-${slot.status}`];
+        if (filled) classes.push("is-in");
+        if (session.askId === id) classes.push("is-asking");
+        if (land) classes.push("is-land");
+        el.className = classes.join(" ");
+        const value = slot.status === "empty" ? "空着" : slot.status === "skip" ? "这句先不问" : slot.value;
+        let tag = "";
+        if (slot.status === "query") tag = "原句";
+        else if (slot.status === "hold") tag = "还没对上";
+        else if (slot.status === "memory" || slot.status === "asked") tag = slot.source;
+        el.innerHTML = `
+          <span class="knob" aria-hidden="true"></span>
+          <div class="socket-label">${esc(slotLabel(id))}</div>
+          <div class="socket-value">${esc(value)}</div>
+          ${tag ? `<div class="socket-tag">${esc(tag)}</div>` : ""}
+          ${slot.cite ? `<p class="socket-cite">${esc(slot.cite)}</p>` : ""}
+        `;
+        const source = tag ? `，${tag}` : "";
+        el.setAttribute("aria-label", `${slotLabel(id)}，${value}${source}`);
+        if (land) setTimeout(() => el.classList.remove("is-land"), 320);
+      }
+
+      function renderBlank() {
+        session.live = Object.fromEntries(SLOTS.map((slot) => [slot.id, blankSlot()]));
+        session.askId = "";
+        SLOTS.forEach((slot) => renderSocket(slot.id));
+      }
+
+      function setStatus(text) {
+        document.getElementById("status").textContent = text;
+      }
+
+      function clearLog(text) {
+        document.getElementById("log").innerHTML = `<li class="log-empty">${esc(text)}</li>`;
+      }
+
+      function pushLog(entry) {
+        const log = document.getElementById("log");
+        log.querySelector(".log-empty")?.remove();
+        const li = document.createElement("li");
+        const cite = entry.cite ? `<span class="cite">${esc(entry.cite)}</span>` : "";
+        li.innerHTML = `<b>${esc(slotLabel(entry.slot))}</b> ${esc(entry.value)} <span class="src">${esc(entry.source)}</span>${cite}`;
+        log.appendChild(li);
+      }
+
+      function slipId(source) {
+        return { 日历: "calendar", 定位: "location", 历史订单: "order" }[source] || "";
+      }
+
+      function settleSlips() {
+        const used = new Set();
+        SLOTS.forEach((slot) => {
+          const id = slipId(session.live[slot.id].source);
+          if (id) used.add(id);
+        });
+        document.querySelectorAll(".slip").forEach((el) => {
+          const on = used.has(el.dataset.memory);
+          el.classList.remove("is-hot");
+          el.classList.toggle("is-used", on);
+          el.classList.toggle("is-idle", !on);
+          el.querySelector(".slip-state").textContent = on ? "这句用了" : "这句没用到";
+        });
+      }
+
+      function resetSlips() {
+        document.querySelectorAll(".slip").forEach((el) => {
+          el.classList.remove("is-hot", "is-used", "is-idle");
+          el.querySelector(".slip-state").textContent = "";
+        });
+      }
+
+      function markSlip(source, hot) {
+        const id = slipId(source);
+        if (!id) return null;
+        const el = document.querySelector(`[data-memory="${id}"]`);
+        el.classList.toggle("is-hot", hot);
+        if (!hot) {
+          el.classList.add("is-used");
+          el.classList.remove("is-idle");
+          el.querySelector(".slip-state").textContent = "这句用了";
+        }
+        return el;
+      }
+
+      function setBusy(busy) {
+        const go = document.getElementById("go");
+        go.disabled = busy;
+        go.textContent = busy ? "正在拼" : "拼上";
+      }
+
+      function setActivePreset(id) {
+        document.querySelectorAll("[data-preset]").forEach((button) => {
+          button.classList.toggle("is-on", button.dataset.preset === id);
+          button.setAttribute("aria-pressed", button.dataset.preset === id ? "true" : "false");
+        });
+      }
+
+      async function fly(fromEl, text, toEl) {
+        if (reduceMotion || !fromEl || !toEl) return;
+        const from = fromEl.getBoundingClientRect();
+        const piece = document.createElement("div");
+        piece.className = "flyer";
+        piece.textContent = text;
+        document.body.appendChild(piece);
+        const size = piece.getBoundingClientRect();
+        const left = from.left + from.width / 2 - size.width / 2;
+        const top = from.top + from.height / 2 - size.height / 2;
+        piece.style.left = `${left}px`;
+        piece.style.top = `${top}px`;
+        const to = toEl.getBoundingClientRect();
+        const dx = to.left + to.width / 2 - size.width / 2 - left;
+        const dy = to.top + 36 - top;
+        const anim = piece.animate(
+          [
+            { transform: "translate(0,0) rotate(-7deg)" },
+            { transform: `translate(${dx * 0.72}px, ${dy * 0.72 - 10}px) rotate(3deg)`, offset: 0.68 },
+            { transform: `translate(${dx}px, ${dy}px) rotate(0deg)` },
+          ],
+          { duration: 560, easing: "cubic-bezier(.2,.7,.2,1)", fill: "forwards" },
+        );
+        await Promise.race([anim.finished.catch(() => {}), wait(640)]);
+        anim.cancel();
+        piece.remove();
+      }
+
+      function statusForStep(step) {
+        const label = slotLabel(step.slot);
+        if (step.status === "memory") return `${step.cite}。${label}写成${step.value}。`;
+        if (step.status === "hold") return `${step.value}先放在${label}上，还没对上是哪一种。`;
+        return `从原句扣上${label}：${step.value}`;
+      }
+
+      async function play(text, options = {}) {
+        const token = ++state.token;
+        const plan = analyze(text);
+        session = { token, plan, text, auto: Boolean(options.auto), live: {}, askId: "", log: [] };
+        setBusy(true);
+        renderBlank();
+        resetSlips();
+        clearLog("拼完以后，按顺序写每块的来源。");
+        document.getElementById("ask").innerHTML = "";
+        document.getElementById("sentence").innerHTML = sentenceHtml(text, plan.ranges || []);
+        if (plan.unrecognized) {
+          setStatus("这句里还听不出要搬家。");
+          clearLog("换一句，带上城市、日期或预算。");
+          settleSlips();
+          setBusy(false);
+          return;
+        }
+        plan.skips.forEach((id) => {
+          session.live[id] = { status: "skip", value: "这句先不问", source: "", cite: "", askKind: "", pending: "" };
+          renderSocket(id);
+        });
+        for (const step of plan.steps) {
+          if (state.token !== token) return;
+          const socket = document.querySelector(`[data-slot="${step.slot}"]`);
+          const mark = document.querySelector(`#sentence [data-step="${step.i}"]`);
+          mark?.classList.add("is-hot");
+          const slip = step.status === "memory" ? markSlip(step.source, true) : null;
+          setStatus(statusForStep(step));
+          await wait(160);
+          if (state.token !== token) return;
+          await fly(slip || mark || document.getElementById("sentence"), step.flyText, socket);
+          if (state.token !== token) return;
+          session.live[step.slot] = {
+            status: step.status,
+            value: step.value,
+            source: step.source,
+            cite: step.cite,
+            askKind: step.askKind || "",
+            pending: step.pending || "",
+          };
+          renderSocket(step.slot, true);
+          pushLog(step);
+          if (slip) markSlip(step.source, false);
+          await wait(120);
+        }
+        if (state.token !== token) return;
+        settleSlips();
+        setBusy(false);
+        renderAsk();
+      }
+
+      function buildQuestion(id) {
+        const slot = session.live[id];
+        if (id === "when" && slot.askKind === "date-role") {
+          const day = slot.pending;
+          const from = session.live.from.value;
+          const to = session.live.to.value;
+          const options = [];
+          if (from && session.live.from.status !== "skip") options.push({ label: `离开${from}`, value: `${day}离开${from}`, source: "你补上的", cite: "" });
+          if (to && session.live.to.status !== "empty") options.push({ label: `到达${to}`, value: `${day}到达${to}`, source: "你补上的", cite: "" });
+          options.push({ label: "当天退租", value: `${day}退租`, source: "你补上的", cite: "" });
+          if (session.plan.work) options.push({ label: "当日报到", value: `${day}报到`, source: "你补上的", cite: "" });
+          return { kicker: "日期还没对上", title: `${day}是哪一天？`, options: options.slice(0, 4) };
+        }
+        if (id === "when") {
+          return {
+            kicker: "还缺日期",
+            title: "哪天搬家？",
+            options: [
+              { label: "6月30日退租", value: "6月30日退租", source: "你补上的", cite: "" },
+              { label: "日历上的 7月15日报到", value: "7月15日报到", source: "日历", cite: CITE.日历 },
+            ],
+            custom: "date",
+            placeholder: "",
+          };
+        }
+        if (id === "budget") {
+          return {
+            kicker: "还缺预算",
+            title: "一次性预算是多少？",
+            options: [6000, 8000, 12000].map((amount) => ({ label: formatYuan(amount), value: formatYuan(amount), source: "你补上的", cite: "" })),
+            custom: "money",
+            placeholder: "自己填金额",
+          };
+        }
+        if (id === "commute") {
+          return {
+            kicker: "还缺通勤时间",
+            title: "通勤最多多久？",
+            options: [
+              { label: "30 分钟", value: "不超过 30 分钟", source: "你补上的", cite: "" },
+              { label: "45 分钟 · 上次订单", value: "不超过 45 分钟", source: "历史订单", cite: CITE.历史订单 },
+              { label: "60 分钟", value: "不超过 60 分钟", source: "你补上的", cite: "" },
+            ],
+          };
+        }
+        if (id === "to" || id === "from") {
+          const options = id === "from" ? [{ label: "定位上的北京", value: "北京", source: "定位", cite: CITE.定位 }] : [];
+          return {
+            kicker: id === "to" ? "还缺目的地" : "还缺出发地",
+            title: id === "to" ? "搬去哪座城市？" : "从哪座城市搬出？",
+            options,
+            custom: "text",
+            placeholder: "城市",
+          };
+        }
+        return null;
+      }
+
+      function renderAsk() {
+        const next = SLOTS.map((slot) => slot.id).find((id) => {
+          const status = session.live[id].status;
+          return status === "empty" || status === "hold";
+        });
+        session.askId = next || "";
+        SLOTS.forEach((slot) => {
+          document.querySelector(`[data-slot="${slot.id}"]`).classList.toggle("is-asking", session.askId === slot.id);
+        });
+        const box = document.getElementById("ask");
+        if (!next) {
+          setStatus("要拼的都齐了。");
+          box.innerHTML = `
+            <div class="ask ask-done">
+              <p class="ask-title">要拼的都齐了。</p>
+              <button type="button" class="btn btn-primary" id="finish">生成计划</button>
+              <p class="ask-note" id="finish-note" hidden>试看到这里。你觉得这样对，再接到搬伴里。</p>
+            </div>
+          `;
+          document.getElementById("finish").addEventListener("click", () => {
+            const note = document.getElementById("finish-note");
+            note.hidden = false;
+            const button = document.getElementById("finish");
+            button.disabled = true;
+            button.textContent = "试看到这里";
+          });
+          return;
+        }
+        const question = buildQuestion(next);
+        const slot = session.live[next];
+        setStatus(slot.status === "hold" ? `${slot.pending}还没对上，先问你是哪一种。` : `${slotLabel(next)}还空着，先问你。`);
+        const options = (question.options || [])
+          .map(
+            (option, index) =>
+              `<button type="button" class="chip" data-option="${index}">${esc(option.label)}</button>`,
+          )
+          .join("");
+        const custom = question.custom
+          ? `<div class="ask-custom">
+              <input id="ask-input" ${question.custom === "money" ? 'type="number" inputmode="numeric" min="1000" max="200000" step="100"' : question.custom === "date" ? 'type="date"' : 'type="text" maxlength="8"'} placeholder="${esc(question.placeholder || "")}" aria-label="${esc(question.title)}" />
+              <button type="button" class="${question.options?.length ? "btn btn-secondary" : "btn btn-primary"}" id="ask-confirm">补上这块</button>
+            </div>`
+          : "";
+        box.innerHTML = `
+          <div class="ask">
+            <p class="ask-kicker">${esc(question.kicker)}</p>
+            <p class="ask-title">${esc(question.title)}</p>
+            <div class="ask-options">${options}</div>
+            ${custom}
+            <p class="ask-error" id="ask-error" hidden></p>
+          </div>
+        `;
+        box.querySelectorAll("[data-option]").forEach((button) => {
+          button.addEventListener("click", () => {
+            session.auto = false;
+            answer(next, question.options[Number(button.dataset.option)], button);
+          });
+        });
+        const confirm = document.getElementById("ask-confirm");
+        const input = document.getElementById("ask-input");
+        const submitCustom = () => {
+          const result = readCustom(question.custom, input.value);
+          const error = document.getElementById("ask-error");
+          if (result.error) {
+            error.hidden = false;
+            error.textContent = result.error;
+            input.focus();
+            return;
+          }
+          session.auto = false;
+          answer(next, result, confirm);
+        };
+        confirm?.addEventListener("click", submitCustom);
+        input?.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            submitCustom();
+          }
+        });
+        if (!session.auto) (box.querySelector("[data-option]") || input)?.focus();
+        const panel = box.querySelector(".ask");
+        if (panel) {
+          const rect = panel.getBoundingClientRect();
+          if (rect.bottom > window.innerHeight - 8 || rect.top < 64) {
+            panel.scrollIntoView({ block: "nearest", behavior: "auto" });
+          }
+        }
+      }
+
+      function readCustom(kind, rawValue) {
+        const raw = String(rawValue || "").trim();
+        if (kind === "text") {
+          const city = cleanCity(raw.replace(/\s+/g, ""));
+          if (city.length < 2) return { error: "先写上城市" };
+          return { value: city, source: "你补上的", cite: "" };
+        }
+        if (kind === "money") {
+          const amount = Number(raw.replace(/[,¥元]/g, ""));
+          if (!Number.isFinite(amount) || amount < 1000 || amount > 200000) return { error: "写一个 1000 以上的金额" };
+          return { value: formatYuan(Math.round(amount)), source: "你补上的", cite: "" };
+        }
+        if (kind === "date") {
+          const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+          if (!match) return { error: "先选一天" };
+          return { value: `${Number(match[2])}月${Number(match[3])}日`, source: "你补上的", cite: "" };
+        }
+        return { error: "先补上这块" };
+      }
+
+      async function answer(id, option, fromEl) {
+        const token = state.token;
+        if (!session || session.token !== token) return;
+        document.getElementById("ask").querySelectorAll("button").forEach((button) => {
+          button.disabled = true;
+        });
+        setBusy(true);
+        const socket = document.querySelector(`[data-slot="${id}"]`);
+        if (option.source !== "你补上的") markSlip(option.source, true);
+        await fly(fromEl, option.value, socket);
+        if (state.token !== token) return;
+        const status = option.source === "你补上的" ? "asked" : "memory";
+        session.live[id] = { status, value: option.value, source: option.source, cite: option.cite || "", askKind: "", pending: "" };
+        session.askId = "";
+        renderSocket(id, true);
+        pushLog({ slot: id, value: option.value, source: option.source, cite: option.cite || "" });
+        settleSlips();
+        setStatus(option.cite ? `${option.cite}。${slotLabel(id)}写成${option.value}。` : `${slotLabel(id)}补上了：${option.value}`);
+        setBusy(false);
+        renderAsk();
+      }
+
+      function startFromInput(auto) {
+        const text = document.getElementById("sentence-input").value.trim();
+        if (!text) {
+          setStatus("先写一句要搬家的话。");
+          return;
+        }
+        const preset = Object.entries(PRESETS).find(([, value]) => value === text);
+        setActivePreset(preset ? preset[0] : "");
+        play(text, { auto });
+      }
+
+      document.getElementById("go").addEventListener("click", () => startFromInput(false));
+      document.getElementById("sentence-input").addEventListener("input", () => setActivePreset(""));
+      document.querySelectorAll("[data-preset]").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.getElementById("sentence-input").value = PRESETS[button.dataset.preset];
+          setActivePreset(button.dataset.preset);
+          play(PRESETS[button.dataset.preset], { auto: false });
+        });
+      });
+
+      window.__analyze = analyze;
+      document.getElementById("sentence-input").value = PRESETS.work;
+      setActivePreset("work");
+      play(PRESETS.work, { auto: true });
+    </script>
+  </body>
+</html>
